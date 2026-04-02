@@ -5,11 +5,11 @@ import numpy as np
 import calendar
 
 # --- 1. KONFIGURASI DATA ---
-SHEET_ID = '18Djb0QiE8uMgt_nXljFCZaMKHwii1pMzAtH96zGc_cI'
+SHEET_ID = '1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY'
 SHEET_NAME = 'app_data'
 URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-st.set_page_config(page_title="Helsa-BR Performance Dashboard 2025", layout="wide")
+st.set_page_config(page_title="Helsa-BR Performance Dashboard 2026", layout="wide")
 
 MONTH_MAP = {
     'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4, 'Mei': 5, 'Juni': 6,
