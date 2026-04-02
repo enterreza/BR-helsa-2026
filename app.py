@@ -83,7 +83,7 @@ if not df.empty:
     for col in ['Actual Revenue (Total)', 'Total OPT', 'Total IPT', 'Total IGD', 'Total IGD to IPT']:
         filtered_df[f'{col}_Growth'] = filtered_df.groupby('Cabang', observed=True)[col].pct_change() * 100
 
-    st.title("📊 Dashboard Performa Helsa-BR 2025")
+    st.title("📊 Dashboard Performa Helsa-Business Review 2026")
     
     colors = {
         'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'},
