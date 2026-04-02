@@ -30,6 +30,7 @@ def load_data():
     sheet_name = "app_data"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     
+    # Baca data
     df = pd.read_csv(url, dtype=str)
     df.columns = [col.strip() for col in df.columns]
     
@@ -49,7 +50,9 @@ def load_data():
     
     for col in numeric_cols:
         if col in df.columns:
+            # Paksa konversi ke numeric dan isi NaN dengan 0
             df[col] = df[col].apply(clean_to_numeric)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
     return df
 
@@ -66,7 +69,7 @@ try:
     selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
     selected_cabang = st.sidebar.multiselect("Pilih Cabang", df['Cabang'].unique(), default=df['Cabang'].unique())
 
-    df_filtered = df[(df['Bulan'].isin(selected_bulan)) & (df['Cabang'].isin(selected_cabang))]
+    df_filtered = df[(df['Bulan'].isin(selected_bulan)) & (df['Cabang'].isin(selected_cabang))].copy()
 
     st.title("🏥 RS Group Financial Performance")
     st.markdown("---")
@@ -74,13 +77,13 @@ try:
     if df_filtered.empty:
         st.warning("Data tidak ditemukan. Silakan sesuaikan filter di sidebar.")
     else:
-        # Metrics
-        rev_act = df_filtered['Actual Revenue (Total)'].sum()
-        rev_tar = df_filtered['Target Revenue (Total)'].sum()
+        # Perhitungan Metrics (Pastikan tipe data float)
+        rev_act = float(df_filtered['Actual Revenue (Total)'].sum())
+        rev_tar = float(df_filtered['Target Revenue (Total)'].sum())
         rev_ach = (rev_act / rev_tar * 100) if rev_tar > 0 else 0
 
-        ebitda_act = df_filtered['Actual EBITDA'].sum()
-        ebitda_tar = df_filtered['Target EBITDA'].sum()
+        ebitda_act = float(df_filtered['Actual EBITDA'].sum())
+        ebitda_tar = float(df_filtered['Target EBITDA'].sum())
         ebitda_ach = (ebitda_act / ebitda_tar * 100) if ebitda_tar > 0 else 0
 
         m1, m2, m3, m4 = st.columns(4)
@@ -109,8 +112,9 @@ try:
 
         st.markdown("---")
         with st.expander("🔍 Lihat Detail Tabel Data (Verifikasi Angka)"):
-            # FIX: Menggunakan 'thousands' dengan s
-            st.dataframe(df_filtered.style.format("{:,.0f}", thousands="."), use_container_width=True)
+            # SOLUSI ERROR 'f': Kita gunakan st.dataframe tanpa .style.format jika masih bermasalah,
+            # ATAU pastikan kolom benar-benar numeric sebelum diformat.
+            st.dataframe(df_filtered, use_container_width=True)
 
 except Exception as e:
     st.error(f"Terjadi kesalahan sistem: {e}")
