@@ -9,6 +9,22 @@ st.set_page_config(page_title="Performance Dashboard RS", layout="wide")
 # Fungsi Load Data
 @st.cache_data
 def load_data():
+    # Fungsi pembersihan data untuk mengatasi error string
+def clean_currency(column):
+    # Menghapus karakter non-numerik kecuali titik dan minus
+    return pd.to_numeric(column.astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0)
+
+# Terapkan pada kolom-kolom yang akan dihitung
+cols_to_fix = [
+    'Target Revenue (Total)', 'Actual Revenue (Total)', 
+    'Target EBITDA', 'Actual EBITDA', 
+    'Actual OPEX', 'Actual HPP (Total)'
+]
+
+for col in cols_to_fix:
+    if col in df.columns:
+        df[col] = clean_currency(df[col])
+        
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
     sheet_name = "app_data"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
