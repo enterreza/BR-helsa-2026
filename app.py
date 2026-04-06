@@ -16,13 +16,14 @@ def format_rupiah_human(n):
     else:
         return f"Rp {n:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA ---
+# --- FUNGSI PEMBERSIHAN DATA (ULTIMATE) ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
     if isinstance(value, (int, float)):
         return float(value)
     val_str = str(value).strip()
+    # Hanya ambil karakter angka
     cleaned = re.sub(r'[^\d]', '', val_str)
     try:
         return float(cleaned) if cleaned != "" else 0.0
@@ -35,7 +36,11 @@ def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
-    numeric_cols = ['Target Revenue (Total)', 'Actual Revenue (Total)', 'Actual EBITDA', 'Actual OPEX']
+    
+    numeric_cols = [
+        'Target Revenue (Total)', 'Actual Revenue (Total)', 
+        'Actual EBITDA', 'Actual OPEX', 'Target EBITDA'
+    ]
 
     for year, s_name in sheets.items():
         try:
@@ -43,12 +48,19 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [col.strip() for col in df_tmp.columns]
             df_tmp['Tahun'] = year
+            
+            # Konversi kolom ke numeric secara paksa
             for col in numeric_cols:
                 if col in df_tmp.columns:
+                    # Langkah 1: Bersihkan karakter non-angka
                     df_tmp[col] = df_tmp[col].apply(clean_to_numeric)
+                    # Langkah 2: Paksa jadi numeric (mengubah NaN jika gagal jadi 0)
+                    df_tmp[col] = pd.to_numeric(df_tmp[col], errors='coerce').fillna(0)
+            
             combined_list.append(df_tmp)
         except:
             continue
+            
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
 # --- MAIN APP ---
@@ -59,14 +71,15 @@ try:
 
     # --- SIDEBAR ---
     st.sidebar.header("⚙️ Filter")
-    list_cabang = sorted(df_all['Cabang'].unique()) if not df_all.empty else []
-    selected_cabang = st.sidebar.multiselect("Pilih Cabang", list_cabang, default=list_cabang)
-    
-    available_months = [m for m in month_order if m in df_all['Bulan'].unique()] if not df_all.empty else []
-    selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
-
     if not df_all.empty:
-        df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))]
+        list_cabang = sorted(df_all['Cabang'].unique())
+        selected_cabang = st.sidebar.multiselect("Pilih Cabang", list_cabang, default=list_cabang)
+        
+        available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
+        selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
+
+        # Filter Data
+        df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
         df_2025 = df_filtered[df_filtered['Tahun'] == '2025']
 
@@ -74,9 +87,9 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI ---
-            rev_26 = df_2026['Actual Revenue (Total)'].sum()
-            rev_25 = df_2025['Actual Revenue (Total)'].sum()
+            # --- KPI ---
+            rev_26 = float(df_2026['Actual Revenue (Total)'].sum())
+            rev_25 = float(df_2025['Actual Revenue (Total)'].sum())
             growth_rev = ((rev_26 - rev_25) / rev_25 * 100) if rev_25 > 0 else 0
 
             c1, c2, c3 = st.columns(3)
@@ -86,7 +99,7 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: YoY TREND ---
+            # --- YoY CHART ---
             st.subheader("📈 Tren Pendapatan Group: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -94,48 +107,29 @@ try:
 
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"},
-                             hover_data={'Actual Revenue (Total)': ':,.0f', 'Tahun': True})
+                             labels={'Actual Revenue (Total)': 'Pendapatan (Rp)'})
 
-            fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", xaxis_title="Bulan", template="plotly_white", hovermode="x unified")
+            fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white")
 
+            # Label % Growth
             for m in selected_bulan:
-                val_26 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2026')]['Actual Revenue (Total)'].sum()
-                val_25 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2025')]['Actual Revenue (Total)'].sum()
-                if val_26 > 0:
-                    pct = ((val_26 - val_25) / val_25 * 100) if val_25 > 0 else 0
-                    arrow = "▲" if pct >= 0 else "▼"
+                v26 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2026')]['Actual Revenue (Total)'].sum()
+                v25 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2025')]['Actual Revenue (Total)'].sum()
+                if v26 > 0:
+                    pct = ((v26 - v25) / v25 * 100) if v25 > 0 else 0
                     color = "#1E8449" if pct >= 0 else "#C0392B"
-                    fig_yoy.add_annotation(x=m, y=val_26, text=f"{arrow} {abs(pct):.1f}%", showarrow=False, yshift=12, font=dict(color=color, size=12, family="Arial Bold"))
-            
+                    fig_yoy.add_annotation(x=m, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
+                                           showarrow=False, yshift=12, font=dict(color=color, size=12, family="Arial Bold"))
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            st.markdown("---")
-
-            # --- ROW 3: DETAIL RS ---
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("🏥 Tren per RS (2026)")
-                df_rs = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order).dropna(how='all')
-                if not df_rs.empty:
-                    fig_rs = px.line(df_rs.reset_index(), x='Bulan', y=df_rs.columns, markers=True)
-                    fig_rs.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)")
-                    st.plotly_chart(fig_rs, use_container_width=True)
-                
-            with col_b:
-                st.subheader("🎯 Pencapaian Target 2026")
-                df_ach = df_2026.groupby('Cabang')[['Target Revenue (Total)', 'Actual Revenue (Total)']].sum().reset_index()
-                fig_ach = go.Figure()
-                fig_ach.add_trace(go.Bar(x=df_ach['Cabang'], y=df_ach['Target Revenue (Total)'], name='Target', marker_color='#D6DBDF'))
-                fig_ach.add_trace(go.Bar(x=df_ach['Cabang'], y=df_ach['Actual Revenue (Total)'], name='Actual', marker_color='#1E8449'))
-                fig_ach.update_layout(yaxis_tickformat=',.0f')
-                st.plotly_chart(fig_ach, use_container_width=True)
-
+            # --- DETAIL TABEL ---
             with st.expander("🔍 Lihat Detail Tabel Data"):
-                st.dataframe(df_filtered.style.format("{:,.0f}", thousands="."), use_container_width=True)
+                # Gunakan st.dataframe tanpa format berlebihan untuk menghindari error 'f'
+                st.dataframe(df_filtered, use_container_width=True)
         else:
-            st.warning("Data 2026 belum tersedia untuk filter yang dipilih.")
+            st.warning("Data 2026 tidak ditemukan.")
     else:
-        st.error("Database kosong atau tidak dapat diakses.")
+        st.error("Database tidak dapat diakses.")
 
 except Exception as e:
     st.error(f"Terjadi kesalahan sistem: {e}")
