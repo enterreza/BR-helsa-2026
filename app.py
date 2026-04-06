@@ -16,14 +16,13 @@ def format_rupiah_human(n):
     else:
         return f"Rp {n:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA (ULTIMATE) ---
+# --- FUNGSI PEMBERSIHAN DATA ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
     if isinstance(value, (int, float)):
         return float(value)
     val_str = str(value).strip()
-    # Hanya ambil karakter angka
     cleaned = re.sub(r'[^\d]', '', val_str)
     try:
         return float(cleaned) if cleaned != "" else 0.0
@@ -49,12 +48,9 @@ def load_combined_data():
             df_tmp.columns = [col.strip() for col in df_tmp.columns]
             df_tmp['Tahun'] = year
             
-            # Konversi kolom ke numeric secara paksa
             for col in numeric_cols:
                 if col in df_tmp.columns:
-                    # Langkah 1: Bersihkan karakter non-angka
                     df_tmp[col] = df_tmp[col].apply(clean_to_numeric)
-                    # Langkah 2: Paksa jadi numeric (mengubah NaN jika gagal jadi 0)
                     df_tmp[col] = pd.to_numeric(df_tmp[col], errors='coerce').fillna(0)
             
             combined_list.append(df_tmp)
@@ -87,7 +83,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- KPI ---
+            # --- ROW 1: KPI ---
             rev_26 = float(df_2026['Actual Revenue (Total)'].sum())
             rev_25 = float(df_2025['Actual Revenue (Total)'].sum())
             growth_rev = ((rev_26 - rev_25) / rev_25 * 100) if rev_25 > 0 else 0
@@ -99,7 +95,7 @@ try:
 
             st.markdown("---")
 
-            # --- YoY CHART ---
+            # --- ROW 2: YoY TREND ---
             st.subheader("📈 Tren Pendapatan Group: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -111,7 +107,6 @@ try:
 
             fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white")
 
-            # Label % Growth
             for m in selected_bulan:
                 v26 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2026')]['Actual Revenue (Total)'].sum()
                 v25 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2025')]['Actual Revenue (Total)'].sum()
@@ -122,9 +117,37 @@ try:
                                            showarrow=False, yshift=12, font=dict(color=color, size=12, family="Arial Bold"))
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            # --- DETAIL TABEL ---
+            st.markdown("---")
+
+            # --- ROW 3: ANALISIS RS (KOMPOSISI & TREN) ---
+            col_a, col_b = st.columns(2)
+            
+            with col_a:
+                st.subheader("📊 Komposisi Pendapatan per RS (2026)")
+                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
+                                 color_discrete_sequence=px.colors.qualitative.Safe)
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            with col_b:
+                st.subheader("🏥 Tren Pendapatan per RS (2026)")
+                df_rs_line = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order).dropna(how='all')
+                if not df_rs_line.empty:
+                    fig_line = px.line(df_rs_line.reset_index(), x='Bulan', y=df_rs_line.columns, markers=True)
+                    fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)")
+                    st.plotly_chart(fig_line, use_container_width=True)
+
+            st.markdown("---")
+
+            # --- ROW 4: TARGET VS ACTUAL ---
+            st.subheader("🎯 Pencapaian Target per RS (2026)")
+            df_ach = df_2026.groupby('Cabang')[['Target Revenue (Total)', 'Actual Revenue (Total)']].sum().reset_index()
+            fig_ach = go.Figure()
+            fig_ach.add_trace(go.Bar(x=df_ach['Cabang'], y=df_ach['Target Revenue (Total)'], name='Target', marker_color='#D6DBDF'))
+            fig_ach.add_trace(go.Bar(x=df_ach['Cabang'], y=df_ach['Actual Revenue (Total)'], name='Actual', marker_color='#1E8449'))
+            fig_ach.update_layout(yaxis_tickformat=',.0f', barmode='group')
+            st.plotly_chart(fig_ach, use_container_width=True)
+
             with st.expander("🔍 Lihat Detail Tabel Data"):
-                # Gunakan st.dataframe tanpa format berlebihan untuk menghindari error 'f'
                 st.dataframe(df_filtered, use_container_width=True)
         else:
             st.warning("Data 2026 tidak ditemukan.")
