@@ -35,7 +35,7 @@ def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
-    numeric_cols = ['Actual Revenue (Total)', 'Actual EBITDA', 'Target Revenue (Total)']
+    numeric_cols = ['Actual Revenue (Total)', 'Actual EBITDA', 'Target Revenue (Total)', 'Target EBITDA']
 
     for year, s_name in sheets.items():
         try:
@@ -67,26 +67,25 @@ try:
 
         df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
-        df_2025 = df_filtered[df_filtered['Tahun'] == '2025']
 
         st.title("🏥 Performance Dashboard RS Group")
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI ---
-            rev_26 = float(df_2026['Actual Revenue (Total)'].sum())
-            rev_25 = float(df_2025['Actual Revenue (Total)'].sum())
-            growth_rev = ((rev_26 - rev_25) / rev_25 * 100) if rev_25 > 0 else 0
+            # --- ROW 1: KPI (DELTA BERDASARKAN TARGET 2026) ---
+            rev_act_26 = float(df_2026['Actual Revenue (Total)'].sum())
+            rev_tar_26 = float(df_2026['Target Revenue (Total)'].sum())
+            ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
 
-            ebitda_26 = float(df_2026['Actual EBITDA'].sum())
-            ebitda_25 = float(df_2025['Actual EBITDA'].sum())
-            growth_ebitda = ((ebitda_26 - ebitda_25) / ebitda_25 * 100) if ebitda_25 > 0 else 0
+            ebit_act_26 = float(df_2026['Actual EBITDA'].sum())
+            ebit_tar_26 = float(df_2026['Target EBITDA'].sum())
+            ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
 
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total Pendapatan 2026", format_rupiah_human(rev_26), f"{growth_rev:.1f}% vs 2025")
+                st.metric("Total Pendapatan 2026", format_rupiah_human(rev_act_26), f"{ach_rev:.1f}% vs Target 2026")
             with col2:
-                st.metric("Total EBITDA 2026", format_rupiah_human(ebitda_26), f"{growth_ebitda:.1f}% vs 2025")
+                st.metric("Total EBITDA 2026", format_rupiah_human(ebit_act_26), f"{ach_ebit:.1f}% vs Target 2026")
 
             st.markdown("---")
 
@@ -102,13 +101,15 @@ try:
             fig_yoy.update_layout(
                 yaxis_tickformat=',.0f',
                 yaxis_title="Pendapatan (Rp)",
+                xaxis_title=None,
                 template="plotly_white",
-                hovermode="x unified",
-                font=dict(size=14)
+                hovermode="x unified", # Tooltip muncul sekaligus
+                font=dict(size=14),
+                legend=dict(title=None, font=dict(size=14))
             )
             fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
-            # Label % Growth di atas batang 2026
+            # Label % Growth (2026 vs 2025) tetap dipertahankan di atas grafik untuk analisis
             for m in selected_bulan:
                 v26 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2026')]['Actual Revenue (Total)'].sum()
                 v25 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2025')]['Actual Revenue (Total)'].sum()
@@ -122,17 +123,12 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 3: ANALISIS TREN PER RS (DIKEMBALIKAN) ---
+            # --- ROW 3: ANALISIS TREN PER RS ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
             df_rs_line = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order).dropna(how='all')
             if not df_rs_line.empty:
                 fig_line = px.line(df_rs_line.reset_index(), x='Bulan', y=df_rs_line.columns, markers=True)
-                fig_line.update_layout(
-                    yaxis_tickformat=',.0f', 
-                    yaxis_title="Pendapatan (Rp)", 
-                    font=dict(size=14),
-                    hovermode="x unified"
-                )
+                fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", font=dict(size=14), hovermode="x unified")
                 fig_line.update_traces(hovertemplate="RS %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
                 st.plotly_chart(fig_line, use_container_width=True)
 
@@ -140,7 +136,6 @@ try:
 
             # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
-            
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
                 fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
@@ -162,10 +157,5 @@ try:
                 df_display = df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']]
                 st.dataframe(df_display.sort_values(by=['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
                 
-        else:
-            st.warning("Data 2026 tidak ditemukan.")
-    else:
-        st.error("Database kosong atau tidak dapat diakses.")
-
 except Exception as e:
     st.error(f"Sistem Error: {e}")
