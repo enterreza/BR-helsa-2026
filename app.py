@@ -106,7 +106,6 @@ try:
                 hovermode="x unified",
                 font=dict(size=14)
             )
-            
             fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
             # Label % Growth di atas batang 2026
@@ -123,7 +122,23 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 3: ANALISIS KOMPOSISI & TARGET ---
+            # --- ROW 3: ANALISIS TREN PER RS (DIKEMBALIKAN) ---
+            st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
+            df_rs_line = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order).dropna(how='all')
+            if not df_rs_line.empty:
+                fig_line = px.line(df_rs_line.reset_index(), x='Bulan', y=df_rs_line.columns, markers=True)
+                fig_line.update_layout(
+                    yaxis_tickformat=',.0f', 
+                    yaxis_title="Pendapatan (Rp)", 
+                    font=dict(size=14),
+                    hovermode="x unified"
+                )
+                fig_line.update_traces(hovertemplate="RS %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
+                st.plotly_chart(fig_line, use_container_width=True)
+
+            st.markdown("---")
+
+            # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
             
             with col_a:
@@ -141,10 +156,9 @@ try:
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14))
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
-            # --- ROW 4: TABEL DETAIL (DIKEMBALIKAN) ---
+            # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
-            with st.expander("🔍 Lihat Detail Tabel Data (2025 & 2026)"):
-                # Menampilkan kolom penting saja untuk kemudahan baca
+            with st.expander("🔍 Lihat Detail Tabel Data"):
                 df_display = df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']]
                 st.dataframe(df_display.sort_values(by=['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
                 
