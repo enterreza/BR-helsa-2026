@@ -7,23 +7,33 @@ import re
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
 
-# --- FUNGSI FORMAT MATA UANG INDONESIA ---
+# --- FUNGSI FORMAT MATA UANG ---
 def format_rupiah_human(n):
-    if abs(n) >= 1_000_000_000:
-        return f"Rp {n / 1_000_000_000:.2f} Miliar"
-    elif abs(n) >= 1_000_000:
-        return f"Rp {n / 1_000_000:.2f} Juta"
+    prefix = "-" if n < 0 else ""
+    val = abs(n)
+    if val >= 1_000_000_000:
+        return f"{prefix}Rp {val / 1_000_000_000:.2f} Miliar"
+    elif val >= 1_000_000:
+        return f"{prefix}Rp {val / 1_000_000:.2f} Juta"
     else:
-        return f"Rp {n:,.0f}"
+        return f"{prefix}Rp {val:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA ---
+# --- FUNGSI PEMBERSIHAN DATA (VERSI ANTI-ERROR MINUS) ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
     if isinstance(value, (int, float)):
         return float(value)
+    
     val_str = str(value).strip()
-    cleaned = re.sub(r'[^\d]', '', val_str)
+    
+    # Menangani format akuntansi (angka dalam kurung = minus)
+    if val_str.startswith('(') and val_str.endswith(')'):
+        val_str = '-' + val_str[1:-1]
+    
+    # Hanya sisakan angka dan tanda minus di depan
+    cleaned = re.sub(r'[^0-9\-]', '', val_str)
+    
     try:
         return float(cleaned) if cleaned != "" else 0.0
     except ValueError:
@@ -72,19 +82,20 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI (DELTA BERDASARKAN TARGET 2026) ---
-            rev_act_26 = float(df_2026['Actual Revenue (Total)'].sum())
-            rev_tar_26 = float(df_2026['Target Revenue (Total)'].sum())
+            # --- ROW 1: KPI ---
+            rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
+            rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
 
-            ebit_act_26 = float(df_2026['Actual EBITDA'].sum())
-            ebit_tar_26 = float(df_2026['Target EBITDA'].sum())
+            ebit_act_26 = df_2026['Actual EBITDA'].sum()
+            ebit_tar_26 = df_2026['Target EBITDA'].sum()
             ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
 
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Total Pendapatan 2026", format_rupiah_human(rev_act_26), f"{ach_rev:.1f}% vs Target 2026")
             with col2:
+                # Delta metric otomatis merah jika di bawah 100% atau minus
                 st.metric("Total EBITDA 2026", format_rupiah_human(ebit_act_26), f"{ach_ebit:.1f}% vs Target 2026")
 
             st.markdown("---")
@@ -99,63 +110,54 @@ try:
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
 
             fig_yoy.update_layout(
-                yaxis_tickformat=',.0f',
-                yaxis_title="Pendapatan (Rp)",
-                xaxis_title=None,
-                template="plotly_white",
-                hovermode="x unified", # Tooltip muncul sekaligus
-                font=dict(size=14),
+                yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", xaxis_title=None,
+                template="plotly_white", hovermode="x unified", font=dict(size=14),
                 legend=dict(title=None, font=dict(size=14))
             )
             fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
-            # Label % Growth (2026 vs 2025) tetap dipertahankan di atas grafik untuk analisis
+            # Label % Growth
             for m in selected_bulan:
-                v26 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2026')]['Actual Revenue (Total)'].sum()
-                v25 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2025')]['Actual Revenue (Total)'].sum()
-                if v26 > 0:
-                    pct = ((v26 - v25) / v25 * 100) if v25 > 0 else 0
+                rows = df_group[df_group['Bulan'] == m]
+                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                if v26 != 0:
+                    pct = ((v26 - v25) / v25 * 100) if v25 != 0 else 0
                     color = "#1E8449" if pct >= 0 else "#C0392B"
                     fig_yoy.add_annotation(x=m, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
-                                           showarrow=False, yshift=15, 
-                                           font=dict(color=color, size=15, family="Arial Bold"))
+                                           showarrow=False, yshift=15, font=dict(color=color, size=15, family="Arial Bold"))
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            st.markdown("---")
-
-            # --- ROW 3: ANALISIS TREN PER RS ---
+            # --- ROW 3: TREN PER RS ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
             df_rs_line = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order).dropna(how='all')
             if not df_rs_line.empty:
                 fig_line = px.line(df_rs_line.reset_index(), x='Bulan', y=df_rs_line.columns, markers=True)
-                fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", font=dict(size=14), hovermode="x unified")
+                fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", font=dict(size=14), hovermode="x unified", xaxis_title=None)
                 fig_line.update_traces(hovertemplate="RS %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
                 st.plotly_chart(fig_line, use_container_width=True)
-
-            st.markdown("---")
 
             # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
-                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
-                                 color_discrete_sequence=px.colors.qualitative.Safe)
-                fig_pie.update_traces(textinfo='percent+label', textfont_size=14, 
-                                      hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
+                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4, color_discrete_sequence=px.colors.qualitative.Safe)
+                fig_pie.update_traces(textinfo='percent+label', textfont_size=14, hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
                 st.plotly_chart(fig_pie, use_container_width=True)
 
             with col_b:
                 st.subheader("🎯 Pencapaian EBITDA per RS")
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
+                # Bar chart akan otomatis ke bawah jika nilai minus
                 fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang')
-                fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14))
+                fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14), xaxis_title=None)
+                fig_ebitda.update_traces(hovertemplate="RS %{x}: Rp %{y:,.0f}<extra></extra>")
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
             # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
-                df_display = df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']]
-                st.dataframe(df_display.sort_values(by=['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
-                
+                st.dataframe(df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
+
 except Exception as e:
     st.error(f"Sistem Error: {e}")
