@@ -35,11 +35,7 @@ def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
-    
-    numeric_cols = [
-        'Target Revenue (Total)', 'Actual Revenue (Total)', 
-        'Actual EBITDA', 'Actual OPEX', 'Target EBITDA'
-    ]
+    numeric_cols = ['Target Revenue (Total)', 'Actual Revenue (Total)', 'Actual EBITDA', 'Actual OPEX', 'Target EBITDA']
 
     for year, s_name in sheets.items():
         try:
@@ -47,16 +43,13 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [col.strip() for col in df_tmp.columns]
             df_tmp['Tahun'] = year
-            
             for col in numeric_cols:
                 if col in df_tmp.columns:
                     df_tmp[col] = df_tmp[col].apply(clean_to_numeric)
                     df_tmp[col] = pd.to_numeric(df_tmp[col], errors='coerce').fillna(0)
-            
             combined_list.append(df_tmp)
         except:
             continue
-            
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
 # --- MAIN APP ---
@@ -65,16 +58,13 @@ try:
     month_order = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
-    # --- SIDEBAR ---
     st.sidebar.header("⚙️ Filter")
     if not df_all.empty:
         list_cabang = sorted(df_all['Cabang'].unique())
         selected_cabang = st.sidebar.multiselect("Pilih Cabang", list_cabang, default=list_cabang)
-        
         available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
         selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
-        # Filter Data
         df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
         df_2025 = df_filtered[df_filtered['Tahun'] == '2025']
@@ -95,7 +85,7 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: YoY TREND ---
+            # --- ROW 2: YoY TREND (Tanpa G/B/e+10) ---
             st.subheader("📈 Tren Pendapatan Group: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -103,10 +93,16 @@ try:
 
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"},
-                             labels={'Actual Revenue (Total)': 'Pendapatan (Rp)'})
+                             # Perbaikan format angka saat kursor menempel (Hover)
+                             hover_data={'Actual Revenue (Total)': ':,.0f', 'Tahun': True})
 
-            fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white")
+            fig_yoy.update_layout(
+                yaxis_tickformat=',.0f', # Menghapus G/B pada sumbu Y
+                yaxis_title="Pendapatan (Rp)",
+                template="plotly_white"
+            )
 
+            # Tambahkan Label % Growth di atas batang
             for m in selected_bulan:
                 v26 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2026')]['Actual Revenue (Total)'].sum()
                 v25 = df_group[(df_group['Bulan'] == m) & (df_group['Tahun'] == '2025')]['Actual Revenue (Total)'].sum()
@@ -124,8 +120,10 @@ try:
             
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS (2026)")
+                # Perbaikan Pie Chart agar tidak muncul e+10
                 fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
                                  color_discrete_sequence=px.colors.qualitative.Safe)
+                fig_pie.update_traces(textinfo='percent+label', hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
                 st.plotly_chart(fig_pie, use_container_width=True)
 
             with col_b:
@@ -144,7 +142,7 @@ try:
             fig_ach = go.Figure()
             fig_ach.add_trace(go.Bar(x=df_ach['Cabang'], y=df_ach['Target Revenue (Total)'], name='Target', marker_color='#D6DBDF'))
             fig_ach.add_trace(go.Bar(x=df_ach['Cabang'], y=df_ach['Actual Revenue (Total)'], name='Actual', marker_color='#1E8449'))
-            fig_ach.update_layout(yaxis_tickformat=',.0f', barmode='group')
+            fig_ach.update_layout(yaxis_tickformat=',.0f', barmode='group', yaxis_title="Rp")
             st.plotly_chart(fig_ach, use_container_width=True)
 
             with st.expander("🔍 Lihat Detail Tabel Data"):
