@@ -92,31 +92,22 @@ try:
 
             # --- ROW 2: YoY TREND ---
             st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
-            
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
             df_group = df_group.sort_values(['Bulan', 'Tahun'])
 
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
-                             color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"},
-                             # Mematikan tooltip bawaan px agar bisa di-custom lewat layout
-                             hover_data={'Actual Revenue (Total)': ':,.0f'})
+                             color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
 
-            # FIX TOOLTIP UNIFIED (Muncul 2025 & 2026 sekaligus) & HAPUS UNDEFINED
             fig_yoy.update_layout(
                 yaxis_tickformat=',.0f',
                 yaxis_title="Pendapatan (Rp)",
-                xaxis_title=None, # Menghapus label "Bulan" di bawah jika tidak perlu untuk kebersihan
                 template="plotly_white",
-                hovermode="x unified", # Menampilkan semua data di titik X yang sama
-                font=dict(size=14),
-                legend=dict(title_text=None, font=dict(size=14)) # Hapus judul legend "Tahun" jika mengganggu
+                hovermode="x unified",
+                font=dict(size=14)
             )
             
-            # Mempercantik tampilan box tooltip
-            fig_yoy.update_traces(
-                hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>"
-            )
+            fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
             # Label % Growth di atas batang 2026
             for m in selected_bulan:
@@ -149,6 +140,18 @@ try:
                 fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang')
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14))
                 st.plotly_chart(fig_ebitda, use_container_width=True)
+
+            # --- ROW 4: TABEL DETAIL (DIKEMBALIKAN) ---
+            st.markdown("---")
+            with st.expander("🔍 Lihat Detail Tabel Data (2025 & 2026)"):
+                # Menampilkan kolom penting saja untuk kemudahan baca
+                df_display = df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']]
+                st.dataframe(df_display.sort_values(by=['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
+                
+        else:
+            st.warning("Data 2026 tidak ditemukan.")
+    else:
+        st.error("Database kosong atau tidak dapat diakses.")
 
 except Exception as e:
     st.error(f"Sistem Error: {e}")
