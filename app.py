@@ -95,28 +95,41 @@ try:
             with col1:
                 st.metric("Total Pendapatan 2026", format_rupiah_human(rev_act_26), f"{ach_rev:.1f}% vs Target 2026")
             with col2:
-                # Delta metric otomatis merah jika di bawah 100% atau minus
                 st.metric("Total EBITDA 2026", format_rupiah_human(ebit_act_26), f"{ach_ebit:.1f}% vs Target 2026")
 
             st.markdown("---")
 
-            # --- ROW 2: YoY TREND ---
-            st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
-            df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
+            # --- ROW 2: YoY TREND (Ditambah Target) ---
+            st.subheader("📈 Tren Pendapatan: Actual vs Target & YoY")
+            
+            # Siapkan data untuk grafik bar
+            df_group = df_filtered.groupby(['Bulan', 'Tahun'])[['Actual Revenue (Total)', 'Target Revenue (Total)']].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
             df_group = df_group.sort_values(['Bulan', 'Tahun'])
 
+            # Buat grafik bar dasar untuk Actual
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
+
+            # Tambahkan bar Target khusus untuk tahun 2026
+            df_target_26 = df_group[df_group['Tahun'] == '2026']
+            fig_yoy.add_trace(go.Bar(
+                x=df_target_26['Bulan'],
+                y=df_target_26['Target Revenue (Total)'],
+                name='Target 2026',
+                marker_color='#D6DBDF',
+                hovertemplate="Target 2026: Rp %{y:,.0f}<extra></extra>"
+            ))
 
             fig_yoy.update_layout(
                 yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", xaxis_title=None,
                 template="plotly_white", hovermode="x unified", font=dict(size=14),
                 legend=dict(title=None, font=dict(size=14))
             )
-            fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
+            fig_yoy.update_traces(selector=dict(type='bar', name='2026'), hovertemplate="Actual 2026: Rp %{y:,.0f}<extra></extra>")
+            fig_yoy.update_traces(selector=dict(type='bar', name='2025'), hovertemplate="Actual 2025: Rp %{y:,.0f}<extra></extra>")
 
-            # Label % Growth
+            # Label % Growth di atas batang
             for m in selected_bulan:
                 rows = df_group[df_group['Bulan'] == m]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
@@ -148,7 +161,6 @@ try:
             with col_b:
                 st.subheader("🎯 Pencapaian EBITDA per RS")
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
-                # Bar chart akan otomatis ke bawah jika nilai minus
                 fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang')
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14), xaxis_title=None)
                 fig_ebitda.update_traces(hovertemplate="RS %{x}: Rp %{y:,.0f}<extra></extra>")
