@@ -8,14 +8,12 @@ import re
 st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
 
 # --- DEFINISI WARNA TETAP PER RS ---
-# Ini memastikan Jatirahayu, Cikampek, dll selalu memiliki warna yang sama di semua grafik
 COLOR_MAP = {
-    "Jatirahayu": "#636EFA", # Biru
-    "Cikampek": "#EF553B",   # Merah/Pink
-    "Citeureup": "#00CC96",  # Hijau Toska
-    "Ciputat": "#AB63FA",    # Ungu
+    "Jatirahayu": "#636EFA", 
+    "Cikampek": "#EF553B",   
+    "Citeureup": "#00CC96",  
+    "Ciputat": "#AB63FA",    
 }
-# Warna cadangan jika ada RS baru
 DEFAULT_COLORS = px.colors.qualitative.Plotly
 
 # --- FUNGSI FORMAT MATA UANG ---
@@ -87,7 +85,7 @@ try:
         df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
 
-        st.title("🏥 Performance Dashboard RS Group")
+        st.title("🏥 Performance Dashboard RS HELSA")
         st.markdown("---")
 
         if not df_2026.empty:
@@ -113,7 +111,7 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: TREN YoY (PENDAPATAN GROUP) ---
+            # --- ROW 2: TREN YoY ---
             st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -121,9 +119,19 @@ try:
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
             fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white", hovermode="x unified")
+            
+            for m in selected_bulan:
+                rows = df_group[df_group['Bulan'] == m]
+                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                if v26 != 0:
+                    pct = ((v26 - v25) / v25 * 100) if v25 != 0 else 0
+                    color = "#1E8449" if pct >= 0 else "#C0392B"
+                    fig_yoy.add_annotation(x=m, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
+                                           showarrow=False, yshift=15, font=dict(color=color, size=14, family="Arial Bold"))
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS (WARNA KONSISTEN) ---
+            # --- ROW 3: TREN PER RS ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
             df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
             df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
@@ -136,26 +144,24 @@ try:
             fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", hovermode="x unified", template="plotly_white")
             st.plotly_chart(fig_line, use_container_width=True)
 
-            # --- ROW 4: KOMPOSISI & EBITDA (WARNA KONSISTEN) ---
+            # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
-                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
-                                 color='Cabang', color_discrete_map=COLOR_MAP)
+                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_pie.update_traces(textinfo='percent+label', hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
                 st.plotly_chart(fig_pie, use_container_width=True)
-
             with col_b:
                 st.subheader("🎯 Pencapaian EBITDA per RS")
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
-                # Menggunakan color_discrete_map untuk bar chart
-                fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang',
-                                    color_discrete_map=COLOR_MAP)
+                fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False)
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
-            # --- ROW 5: TABEL DETAIL ---
+            # --- ROW 5: TABEL DETAIL (DIKEMBALIKAN) ---
+            st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
                 st.dataframe(df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
+
 except Exception as e:
     st.error(f"Sistem Error: {e}")
