@@ -1,5 +1,5 @@
 import streamlit as st
-import pd as pd
+import pandas as pd  # <-- Perbaikan di sini
 import plotly.express as px
 import plotly.graph_objects as go
 import re
@@ -89,7 +89,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI (NOMINAL TARGET TANPA PANAH) ---
+            # --- ROW 1: KPI ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -111,7 +111,7 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: TREN YoY (DENGAN % PERTUMBUHAN) ---
+            # --- ROW 2: TREN YoY ---
             st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -122,7 +122,6 @@ try:
             
             fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white", hovermode="x unified")
 
-            # MENAMPILKAN KEMBALI PERSENTASE PERTUMBUHAN DI ATAS BATANG
             for m in selected_bulan:
                 rows = df_group[df_group['Bulan'] == m]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
@@ -135,7 +134,7 @@ try:
             
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS (WARNA KONSISTEN & TARGET PER RS) ---
+            # --- ROW 3: TREN PER RS ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
             df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
             df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
@@ -149,7 +148,7 @@ try:
             fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", hovermode="x unified", template="plotly_white")
             st.plotly_chart(fig_line, use_container_width=True)
 
-            # --- ROW 4: KOMPOSISI & EBITDA (WARNA KONSISTEN) ---
+            # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
