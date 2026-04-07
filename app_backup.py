@@ -7,6 +7,17 @@ import re
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
 
+# --- DEFINISI WARNA TETAP PER RS ---
+# Ini memastikan Jatirahayu, Cikampek, dll selalu memiliki warna yang sama di semua grafik
+COLOR_MAP = {
+    "Jatirahayu": "#636EFA", # Biru
+    "Cikampek": "#EF553B",   # Merah/Pink
+    "Citeureup": "#00CC96",  # Hijau Toska
+    "Ciputat": "#AB63FA",    # Ungu
+}
+# Warna cadangan jika ada RS baru
+DEFAULT_COLORS = px.colors.qualitative.Plotly
+
 # --- FUNGSI FORMAT MATA UANG ---
 def format_rupiah_human(n):
     prefix = "-" if n < 0 else ""
@@ -33,7 +44,7 @@ def clean_to_numeric(value):
     except ValueError:
         return 0.0
 
-# --- FUNGSI LOAD DATA (DIPERBAIKI) ---
+# --- FUNGSI LOAD DATA ---
 @st.cache_data
 def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
@@ -45,30 +56,19 @@ def load_combined_data():
         try:
             url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={s_name}"
             df_tmp = pd.read_csv(url, dtype=str)
-            
-            # PEMBERSIHAN NAMA KOLOM (Menghapus spasi di awal/akhir nama kolom)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
-            
-            # Pastikan kolom kritis ada, jika tidak ada buat kolom kosong agar tidak error
-            if 'Cabang' not in df_tmp.columns:
-                df_tmp['Cabang'] = 'Unknown'
-            if 'Bulan' not in df_tmp.columns:
-                df_tmp['Bulan'] = 'Unknown'
-            
+            if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
+            if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
             df_tmp['Tahun'] = year
-            
             for col in numeric_cols:
                 if col in df_tmp.columns:
                     df_tmp[col] = df_tmp[col].apply(clean_to_numeric)
                     df_tmp[col] = pd.to_numeric(df_tmp[col], errors='coerce').fillna(0)
                 else:
-                    df_tmp[col] = 0.0 # Buat kolom dengan angka 0 jika tidak ditemukan
-            
+                    df_tmp[col] = 0.0
             combined_list.append(df_tmp)
-        except Exception as e:
-            st.warning(f"Gagal memuat data {year} ({s_name}): {e}")
+        except Exception:
             continue
-            
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
 # --- MAIN APP ---
@@ -78,14 +78,12 @@ try:
                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
     st.sidebar.header("⚙️ Filter")
-    if not df_all.empty and 'Cabang' in df_all.columns:
+    if not df_all.empty:
         list_cabang = sorted(df_all['Cabang'].unique())
         selected_cabang = st.sidebar.multiselect("Pilih Cabang", list_cabang, default=list_cabang)
-        
         available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
         selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
-        # Filter Data
         df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
 
@@ -97,7 +95,6 @@ try:
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
-
             ebit_act_26 = df_2026['Actual EBITDA'].sum()
             ebit_tar_26 = df_2026['Target EBITDA'].sum()
             ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
@@ -108,7 +105,6 @@ try:
                 st.write(f"### {format_rupiah_human(rev_act_26)}")
                 st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
                 st.write(f":green[{ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target 2026]")
-            
             with col2:
                 st.subheader("Total EBITDA 2026")
                 st.write(f"### {format_rupiah_human(ebit_act_26)}")
@@ -117,71 +113,49 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: TREN YoY ---
+            # --- ROW 2: TREN YoY (PENDAPATAN GROUP) ---
             st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
             df_group = df_group.sort_values(['Bulan', 'Tahun'])
-
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
-
-            fig_yoy.update_layout(
-                yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", xaxis_title=None,
-                template="plotly_white", hovermode="x unified", font=dict(size=14),
-                legend=dict(title=None, font=dict(size=14))
-            )
-            fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
-
-            for m in selected_bulan:
-                rows = df_group[df_group['Bulan'] == m]
-                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
-                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
-                if v26 != 0:
-                    pct = ((v26 - v25) / v25 * 100) if v25 != 0 else 0
-                    color = "#1E8449" if pct >= 0 else "#C0392B"
-                    fig_yoy.add_annotation(x=m, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
-                                           showarrow=False, yshift=15, font=dict(color=color, size=15, family="Arial Bold"))
+            fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white", hovermode="x unified")
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS ---
+            # --- ROW 3: TREN PER RS (WARNA KONSISTEN) ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
             df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
             df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
-
+            
             fig_line = go.Figure()
-            colors = px.colors.qualitative.Plotly
-            for i, rs in enumerate(df_rs_actual.columns):
-                color = colors[i % len(colors)]
+            for rs in df_rs_actual.columns:
+                color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
                 fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Actual {rs}", mode='lines+markers', line=dict(color=color)))
-                fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Target {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.6))
-
-            fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", font=dict(size=14), hovermode="x unified", template="plotly_white", xaxis_title=None)
+                fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Target {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
+            fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", hovermode="x unified", template="plotly_white")
             st.plotly_chart(fig_line, use_container_width=True)
 
-            # --- ROW 4: KOMPOSISI & EBITDA ---
+            # --- ROW 4: KOMPOSISI & EBITDA (WARNA KONSISTEN) ---
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
-                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4, color_discrete_sequence=px.colors.qualitative.Safe)
-                fig_pie.update_traces(textinfo='percent+label', textfont_size=14, hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
+                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
+                                 color='Cabang', color_discrete_map=COLOR_MAP)
+                fig_pie.update_traces(textinfo='percent+label', hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
                 st.plotly_chart(fig_pie, use_container_width=True)
 
             with col_b:
                 st.subheader("🎯 Pencapaian EBITDA per RS")
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
-                fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang')
-                fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14), xaxis_title=None)
+                # Menggunakan color_discrete_map untuk bar chart
+                fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang',
+                                    color_discrete_map=COLOR_MAP)
+                fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False)
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
             # --- ROW 5: TABEL DETAIL ---
-            st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
                 st.dataframe(df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
-        else:
-            st.warning("Data 2026 tidak ditemukan.")
-    else:
-        st.error("Database kosong atau kolom 'Cabang' tidak ditemukan.")
-
 except Exception as e:
-    st.error(f"Terjadi kesalahan sistem: {e}")
+    st.error(f"Sistem Error: {e}")
