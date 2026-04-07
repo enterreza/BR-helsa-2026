@@ -18,22 +18,16 @@ def format_rupiah_human(n):
     else:
         return f"{prefix}Rp {val:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA (VERSI ANTI-ERROR MINUS) ---
+# --- FUNGSI PEMBERSIHAN DATA ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
     if isinstance(value, (int, float)):
         return float(value)
-    
     val_str = str(value).strip()
-    
-    # Menangani format akuntansi (angka dalam kurung = minus)
     if val_str.startswith('(') and val_str.endswith(')'):
         val_str = '-' + val_str[1:-1]
-    
-    # Hanya sisakan angka dan tanda minus di depan
     cleaned = re.sub(r'[^0-9\-]', '', val_str)
-    
     try:
         return float(cleaned) if cleaned != "" else 0.0
     except ValueError:
@@ -82,7 +76,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI ---
+            # --- ROW 1: KPI (MENAMPILKAN NOMINAL TARGET) ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -93,14 +87,20 @@ try:
 
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total Pendapatan 2026", format_rupiah_human(rev_act_26), f"{ach_rev:.1f}% vs Target 2026")
+                st.subheader("Total Pendapatan 2026")
+                st.write(f"### {format_rupiah_human(rev_act_26)}")
+                st.caption(f"**Target: {format_rupiah_human(rev_tar_26)}**")
+                st.write(f":green[↑ {ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":red[↓ {ach_rev:.1f}% vs Target 2026]")
+            
             with col2:
-                # Delta metric otomatis merah jika di bawah 100% atau minus
-                st.metric("Total EBITDA 2026", format_rupiah_human(ebit_act_26), f"{ach_ebit:.1f}% vs Target 2026")
+                st.subheader("Total EBITDA 2026")
+                st.write(f"### {format_rupiah_human(ebit_act_26)}")
+                st.caption(f"**Target: {format_rupiah_human(ebit_tar_26)}**")
+                st.write(f":green[↑ {ach_ebit:.1f}% vs Target 2026]" if ach_ebit >= 100 else f":red[↓ {ach_ebit:.1f}% vs Target 2026]")
 
             st.markdown("---")
 
-            # --- ROW 2: YoY TREND ---
+            # --- ROW 2: TREN YoY (KEMBALI BERSIH 2026 VS 2025) ---
             st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -116,7 +116,7 @@ try:
             )
             fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
-            # Label % Growth
+            # Label % Growth di atas batang
             for m in selected_bulan:
                 rows = df_group[df_group['Bulan'] == m]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
@@ -148,7 +148,6 @@ try:
             with col_b:
                 st.subheader("🎯 Pencapaian EBITDA per RS")
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
-                # Bar chart akan otomatis ke bawah jika nilai minus
                 fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang')
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14), xaxis_title=None)
                 fig_ebitda.update_traces(hovertemplate="RS %{x}: Rp %{y:,.0f}<extra></extra>")
