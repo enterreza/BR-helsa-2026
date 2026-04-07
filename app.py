@@ -43,7 +43,7 @@ def load_combined_data():
 
     for year, s_name in sheets.items():
         try:
-            url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={s_name}"
+            url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx:out:csv&sheet={s_name}"
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [col.strip() for col in df_tmp.columns]
             df_tmp['Tahun'] = year
@@ -127,26 +127,36 @@ try:
                                            showarrow=False, yshift=15, font=dict(color=color, size=15, family="Arial Bold"))
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS (DENGAN TARGET) ---
+            # --- ROW 3: TREN PER RS (DENGAN TARGET PER RS) ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
-            # Data Actual
+            
+            # Pivot data untuk Actual per RS
             df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
-            # Data Target (Total Group per Bulan)
-            df_target_trend = df_2026.groupby('Bulan')['Target Revenue (Total)'].sum().reindex(month_order).reset_index()
+            # Pivot data untuk Target per RS
+            df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
 
             fig_line = go.Figure()
-            # Garis Actual per RS
-            for rs in df_rs_actual.columns:
-                fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Actual {rs}", mode='lines+markers'))
             
-            # Garis Target Group (Dibuat putus-putus/berbeda)
-            fig_line.add_trace(go.Scatter(
-                x=df_target_trend['Bulan'], 
-                y=df_target_trend['Target Revenue (Total)'], 
-                name="Total Target Group", 
-                line=dict(color='black', width=3, dash='dash'),
-                mode='lines'
-            ))
+            # Buat warna untuk konsistensi antara Actual dan Target tiap RS
+            colors = px.colors.qualitative.Plotly
+
+            for i, rs in enumerate(df_rs_actual.columns):
+                color = colors[i % len(colors)]
+                # Tambahkan Garis Actual (Solid)
+                fig_line.add_trace(go.Scatter(
+                    x=df_rs_actual.index, y=df_rs_actual[rs], 
+                    name=f"Actual {rs}", 
+                    mode='lines+markers',
+                    line=dict(color=color)
+                ))
+                # Tambahkan Garis Target (Dash)
+                fig_line.add_trace(go.Scatter(
+                    x=df_rs_target.index, y=df_rs_target[rs], 
+                    name=f"Target {rs}", 
+                    mode='lines',
+                    line=dict(color=color, dash='dash', width=1.5),
+                    opacity=0.6
+                ))
 
             fig_line.update_layout(
                 yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", 
