@@ -18,22 +18,16 @@ def format_rupiah_human(n):
     else:
         return f"{prefix}Rp {val:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA (VERSI ANTI-ERROR MINUS) ---
+# --- FUNGSI PEMBERSIHAN DATA ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
     if isinstance(value, (int, float)):
         return float(value)
-    
     val_str = str(value).strip()
-    
-    # Menangani format akuntansi (angka dalam kurung = minus)
     if val_str.startswith('(') and val_str.endswith(')'):
         val_str = '-' + val_str[1:-1]
-    
-    # Hanya sisakan angka dan tanda minus di depan
     cleaned = re.sub(r'[^0-9\-]', '', val_str)
-    
     try:
         return float(cleaned) if cleaned != "" else 0.0
     except ValueError:
@@ -82,7 +76,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI ---
+            # --- ROW 1: KPI (MENAMPILKAN NOMINAL TARGET) ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -93,41 +87,34 @@ try:
 
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total Pendapatan 2026", format_rupiah_human(rev_act_26), f"{ach_rev:.1f}% vs Target 2026")
+                st.subheader("Total Pendapatan 2026")
+                st.write(f"### {format_rupiah_human(rev_act_26)}")
+                st.caption(f"**Target: {format_rupiah_human(rev_tar_26)}**")
+                st.write(f":green[↑ {ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":red[↓ {ach_rev:.1f}% vs Target 2026]")
+            
             with col2:
-                st.metric("Total EBITDA 2026", format_rupiah_human(ebit_act_26), f"{ach_ebit:.1f}% vs Target 2026")
+                st.subheader("Total EBITDA 2026")
+                st.write(f"### {format_rupiah_human(ebit_act_26)}")
+                st.caption(f"**Target: {format_rupiah_human(ebit_tar_26)}**")
+                st.write(f":green[↑ {ach_ebit:.1f}% vs Target 2026]" if ach_ebit >= 100 else f":red[↓ {ach_ebit:.1f}% vs Target 2026]")
 
             st.markdown("---")
 
-            # --- ROW 2: YoY TREND (Ditambah Target) ---
-            st.subheader("📈 Tren Pendapatan: Actual vs Target & YoY")
-            
-            # Siapkan data untuk grafik bar
-            df_group = df_filtered.groupby(['Bulan', 'Tahun'])[['Actual Revenue (Total)', 'Target Revenue (Total)']].sum().reset_index()
+            # --- ROW 2: TREN YoY (KEMBALI BERSIH 2026 VS 2025) ---
+            st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
+            df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
             df_group = df_group.sort_values(['Bulan', 'Tahun'])
 
-            # Buat grafik bar dasar untuk Actual
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
-
-            # Tambahkan bar Target khusus untuk tahun 2026
-            df_target_26 = df_group[df_group['Tahun'] == '2026']
-            fig_yoy.add_trace(go.Bar(
-                x=df_target_26['Bulan'],
-                y=df_target_26['Target Revenue (Total)'],
-                name='Target 2026',
-                marker_color='#D6DBDF',
-                hovertemplate="Target 2026: Rp %{y:,.0f}<extra></extra>"
-            ))
 
             fig_yoy.update_layout(
                 yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", xaxis_title=None,
                 template="plotly_white", hovermode="x unified", font=dict(size=14),
                 legend=dict(title=None, font=dict(size=14))
             )
-            fig_yoy.update_traces(selector=dict(type='bar', name='2026'), hovertemplate="Actual 2026: Rp %{y:,.0f}<extra></extra>")
-            fig_yoy.update_traces(selector=dict(type='bar', name='2025'), hovertemplate="Actual 2025: Rp %{y:,.0f}<extra></extra>")
+            fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
             # Label % Growth di atas batang
             for m in selected_bulan:
