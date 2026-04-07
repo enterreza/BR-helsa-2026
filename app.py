@@ -76,7 +76,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI (TANPA TANDA PANAH DI PERSENTASE) ---
+            # --- ROW 1: KPI (TANPA PANAH) ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -90,14 +90,12 @@ try:
                 st.subheader("Total Pendapatan 2026")
                 st.write(f"### {format_rupiah_human(rev_act_26)}")
                 st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
-                # Menampilkan hanya teks persentase tanpa tanda panah
                 st.write(f":green[{ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target 2026]")
             
             with col2:
                 st.subheader("Total EBITDA 2026")
                 st.write(f"### {format_rupiah_human(ebit_act_26)}")
                 st.caption(f"Target: {format_rupiah_human(ebit_tar_26)}")
-                # Menampilkan hanya teks persentase tanpa tanda panah
                 st.write(f":green[{ach_ebit:.1f}% vs Target 2026]" if ach_ebit >= 100 else f":orange[{ach_ebit:.1f}% vs Target 2026]")
 
             st.markdown("---")
@@ -118,7 +116,6 @@ try:
             )
             fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
-            # Label % Growth di atas batang (Tetap ada panah karena ini perbandingan pertumbuhan YoY)
             for m in selected_bulan:
                 rows = df_group[df_group['Bulan'] == m]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
@@ -130,14 +127,33 @@ try:
                                            showarrow=False, yshift=15, font=dict(color=color, size=15, family="Arial Bold"))
             st.plotly_chart(fig_yoy, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS ---
+            # --- ROW 3: TREN PER RS (DENGAN TARGET) ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
-            df_rs_line = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order).dropna(how='all')
-            if not df_rs_line.empty:
-                fig_line = px.line(df_rs_line.reset_index(), x='Bulan', y=df_rs_line.columns, markers=True)
-                fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", font=dict(size=14), hovermode="x unified", xaxis_title=None)
-                fig_line.update_traces(hovertemplate="RS %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
-                st.plotly_chart(fig_line, use_container_width=True)
+            # Data Actual
+            df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
+            # Data Target (Total Group per Bulan)
+            df_target_trend = df_2026.groupby('Bulan')['Target Revenue (Total)'].sum().reindex(month_order).reset_index()
+
+            fig_line = go.Figure()
+            # Garis Actual per RS
+            for rs in df_rs_actual.columns:
+                fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Actual {rs}", mode='lines+markers'))
+            
+            # Garis Target Group (Dibuat putus-putus/berbeda)
+            fig_line.add_trace(go.Scatter(
+                x=df_target_trend['Bulan'], 
+                y=df_target_trend['Target Revenue (Total)'], 
+                name="Total Target Group", 
+                line=dict(color='black', width=3, dash='dash'),
+                mode='lines'
+            ))
+
+            fig_line.update_layout(
+                yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", 
+                font=dict(size=14), hovermode="x unified", template="plotly_white",
+                xaxis_title=None
+            )
+            st.plotly_chart(fig_line, use_container_width=True)
 
             # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
@@ -152,7 +168,6 @@ try:
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
                 fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang')
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False, font=dict(size=14), xaxis_title=None)
-                fig_ebitda.update_traces(hovertemplate="RS %{x}: Rp %{y:,.0f}<extra></extra>")
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
             # --- ROW 5: TABEL DETAIL ---
