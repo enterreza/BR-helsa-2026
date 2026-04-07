@@ -76,7 +76,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI (MENAMPILKAN NOMINAL TARGET) ---
+            # --- ROW 1: KPI (TANPA TANDA PANAH DI PERSENTASE) ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -89,18 +89,20 @@ try:
             with col1:
                 st.subheader("Total Pendapatan 2026")
                 st.write(f"### {format_rupiah_human(rev_act_26)}")
-                st.caption(f"**Target: {format_rupiah_human(rev_tar_26)}**")
-                st.write(f":green[↑ {ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":red[↓ {ach_rev:.1f}% vs Target 2026]")
+                st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
+                # Menampilkan hanya teks persentase tanpa tanda panah
+                st.write(f":green[{ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target 2026]")
             
             with col2:
                 st.subheader("Total EBITDA 2026")
                 st.write(f"### {format_rupiah_human(ebit_act_26)}")
-                st.caption(f"**Target: {format_rupiah_human(ebit_tar_26)}**")
-                st.write(f":green[↑ {ach_ebit:.1f}% vs Target 2026]" if ach_ebit >= 100 else f":red[↓ {ach_ebit:.1f}% vs Target 2026]")
+                st.caption(f"Target: {format_rupiah_human(ebit_tar_26)}")
+                # Menampilkan hanya teks persentase tanpa tanda panah
+                st.write(f":green[{ach_ebit:.1f}% vs Target 2026]" if ach_ebit >= 100 else f":orange[{ach_ebit:.1f}% vs Target 2026]")
 
             st.markdown("---")
 
-            # --- ROW 2: TREN YoY (KEMBALI BERSIH 2026 VS 2025) ---
+            # --- ROW 2: TREN YoY ---
             st.subheader("📈 Tren Pendapatan: 2026 vs 2025")
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
@@ -116,7 +118,7 @@ try:
             )
             fig_yoy.update_traces(hovertemplate="Tahun %{fullData.name}: Rp %{y:,.0f}<extra></extra>")
 
-            # Label % Growth di atas batang
+            # Label % Growth di atas batang (Tetap ada panah karena ini perbandingan pertumbuhan YoY)
             for m in selected_bulan:
                 rows = df_group[df_group['Bulan'] == m]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
