@@ -3,9 +3,20 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import re
+import os # Tambahan library untuk mengecek keberadaan file logo
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
+
+# --- TAMBAHAN LOGO DI POJOK KIRI ATAS ---
+LOGO_FILE = "HELSA Rumah sakit.png"
+if os.path.exists(LOGO_FILE):
+    # Gunakan st.image untuk menampilkan logo, use_container_width=False agar tidak terlalu besar
+    # diletakkan di paling atas sebelum title agar muncul di pojok kiri atas
+    st.image(LOGO_FILE, use_container_width=False, width=250)
+else:
+    # Tampilkan pesan warning ringan jika logo tidak ditemukan (agar app tidak crash)
+    st.warning("⚠️ File logo 'HELSA Rumah sakit.png' tidak ditemukan di folder app. Dashboard berjalan tanpa logo.")
 
 # --- DEFINISI WARNA TETAP PER RS ---
 COLOR_MAP = {
@@ -85,7 +96,8 @@ try:
         df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
 
-        st.title("🏥 Performance Dashboard RS HELSA")
+        # Title dashboard diletakkan setelah st.image agar logo berada di atas
+        st.title("🏥 Performance Dashboard RS Group")
         st.markdown("---")
 
         if not df_2026.empty:
@@ -158,7 +170,7 @@ try:
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False)
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
-            # --- ROW 5: TABEL DETAIL (DIKEMBALIKAN) ---
+            # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
                 st.dataframe(df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
