@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd  # <-- Perbaikan di sini
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import re
@@ -116,12 +116,10 @@ try:
             df_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
             df_group['Bulan'] = pd.Categorical(df_group['Bulan'], categories=month_order, ordered=True)
             df_group = df_group.sort_values(['Bulan', 'Tahun'])
-
             fig_yoy = px.bar(df_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
                              color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
-            
             fig_yoy.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white", hovermode="x unified")
-
+            
             for m in selected_bulan:
                 rows = df_group[df_group['Bulan'] == m]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
@@ -131,7 +129,6 @@ try:
                     color = "#1E8449" if pct >= 0 else "#C0392B"
                     fig_yoy.add_annotation(x=m, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
                                            showarrow=False, yshift=15, font=dict(color=color, size=14, family="Arial Bold"))
-            
             st.plotly_chart(fig_yoy, use_container_width=True)
 
             # --- ROW 3: TREN PER RS ---
@@ -144,7 +141,6 @@ try:
                 color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
                 fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Actual {rs}", mode='lines+markers', line=dict(color=color)))
                 fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Target {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
-            
             fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", hovermode="x unified", template="plotly_white")
             st.plotly_chart(fig_line, use_container_width=True)
 
@@ -152,17 +148,20 @@ try:
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
-                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4,
-                                 color='Cabang', color_discrete_map=COLOR_MAP)
+                fig_pie = px.pie(df_2026, values='Actual Revenue (Total)', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_pie.update_traces(textinfo='percent+label', hovertemplate='RS: %{label}<br>Total: Rp %{value:,.0f}')
                 st.plotly_chart(fig_pie, use_container_width=True)
-
             with col_b:
                 st.subheader("🎯 Pencapaian EBITDA per RS")
                 df_ebitda_rs = df_2026.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
                 fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False)
                 st.plotly_chart(fig_ebitda, use_container_width=True)
+
+            # --- ROW 5: TABEL DETAIL (DIKEMBALIKAN) ---
+            st.markdown("---")
+            with st.expander("🔍 Lihat Detail Tabel Data"):
+                st.dataframe(df_filtered[['Tahun', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True]), use_container_width=True)
 
 except Exception as e:
     st.error(f"Sistem Error: {e}")
