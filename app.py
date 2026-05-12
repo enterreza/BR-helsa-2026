@@ -8,7 +8,7 @@ import os
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
 
-# --- TAMBAHAN LOGO DI POJOK KIRI ATAS ---
+# --- LOGO DI POJOK KIRI ATAS ---
 LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
@@ -102,18 +102,18 @@ try:
         list_cabang = sorted(df_all['Cabang'].unique())
         selected_cabang = st.sidebar.multiselect("Pilih Cabang", list_cabang, default=list_cabang)
         
-        # Filter Berdasarkan Kuartal untuk Tren Pendapatan
-        available_quarters = [q for q in quarter_order if q in df_all['Kuartal'].unique()]
-        selected_quarters = st.sidebar.multiselect("Pilih Kuartal", available_quarters, default=available_quarters)
+        available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
+        selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
-        df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Kuartal'].isin(selected_quarters))].copy()
+        # Filter data
+        df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
 
         st.title("🏥 Performance Dashboard RS Group")
         st.markdown("---")
 
         if not df_2026.empty:
-            # KPI Section (Row 1)
+            # --- ROW 1: KPI ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -135,29 +135,54 @@ try:
 
             st.markdown("---")
 
-            # YoY TREND PER KUARTAL (Row 2)
-            st.subheader("📈 Tren Pendapatan per Kuartal: 2026 vs 2025")
-            df_q_group = df_filtered.groupby(['Kuartal', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
-            df_q_group['Kuartal'] = pd.Categorical(df_q_group['Kuartal'], categories=quarter_order, ordered=True)
-            df_q_group = df_q_group.sort_values(['Kuartal', 'Tahun'])
+            # --- ROW 2: TREN PER KUARTAL & PER BULAN ---
+            col_q, col_m = st.columns(2)
             
-            fig_yoy_q = px.bar(df_q_group, x='Kuartal', y='Actual Revenue (Total)', color='Tahun', barmode='group',
-                             color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
-            fig_yoy_q.update_layout(yaxis_tickformat=',.0f', yaxis_title="Total Pendapatan (Rp)", template="plotly_white", hovermode="x unified")
-            
-            # Label Growth per Kuartal
-            for q in selected_quarters:
-                rows = df_q_group[df_q_group['Kuartal'] == q]
-                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
-                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
-                if v26 != 0 and not rows.empty:
-                    pct = ((v26 - v25) / v25 * 100) if v25 != 0 else 0
-                    color = "#1E8449" if pct >= 0 else "#C0392B"
-                    fig_yoy_q.add_annotation(x=q, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
-                                           showarrow=False, yshift=15, font=dict(color=color, size=14, family="Arial Bold"))
-            st.plotly_chart(fig_yoy_q, use_container_width=True)
+            with col_q:
+                st.subheader("📈 Tren Pendapatan per Kuartal")
+                df_q_group = df_filtered.groupby(['Kuartal', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
+                df_q_group['Kuartal'] = pd.Categorical(df_q_group['Kuartal'], categories=quarter_order, ordered=True)
+                df_q_group = df_q_group.sort_values(['Kuartal', 'Tahun'])
+                
+                fig_q = px.bar(df_q_group, x='Kuartal', y='Actual Revenue (Total)', color='Tahun', barmode='group',
+                                 color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
+                
+                # Pertumbuhan per Kuartal
+                for q in df_q_group['Kuartal'].unique():
+                    rows = df_q_group[df_q_group['Kuartal'] == q]
+                    v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                    v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                    if v26 != 0 and v25 != 0:
+                        pct = ((v26 - v25) / v25 * 100)
+                        color = "#1E8449" if pct >= 0 else "#C0392B"
+                        fig_q.add_annotation(x=q, y=v26, text=f"{'▲' if pct>=0 else '▼'} {abs(pct):.1f}%", 
+                                             showarrow=False, yshift=10, font=dict(color=color, size=12, family="Arial Bold"))
+                fig_q.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white")
+                st.plotly_chart(fig_q, use_container_width=True)
 
-            # RS Trend (Row 3) - Tetap per Bulan untuk detail pertumbuhan
+            with col_m:
+                st.subheader("📅 Tren Pendapatan per Bulan")
+                df_m_group = df_filtered.groupby(['Bulan', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
+                df_m_group['Bulan'] = pd.Categorical(df_m_group['Bulan'], categories=month_order, ordered=True)
+                df_m_group = df_m_group.sort_values(['Bulan', 'Tahun'])
+                
+                fig_m = px.bar(df_m_group, x='Bulan', y='Actual Revenue (Total)', color='Tahun', barmode='group',
+                                 color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
+                
+                # Pertumbuhan per Bulan
+                for b in selected_bulan:
+                    rows = df_m_group[df_m_group['Bulan'] == b]
+                    v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                    v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                    if v26 != 0 and v25 != 0:
+                        pct = ((v26 - v25) / v25 * 100)
+                        color = "#1E8449" if pct >= 0 else "#C0392B"
+                        fig_m.add_annotation(x=b, y=v26, text=f"{abs(pct):.0f}%", 
+                                             showarrow=False, yshift=10, font=dict(color=color, size=10))
+                fig_m.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", template="plotly_white")
+                st.plotly_chart(fig_m, use_container_width=True)
+
+            # --- ROW 3: TREN PER RS ---
             st.subheader("🏥 Tren Pertumbuhan Pendapatan per RS (2026)")
             df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
             df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
@@ -169,7 +194,7 @@ try:
             fig_line.update_layout(yaxis_tickformat=',.0f', yaxis_title="Pendapatan (Rp)", hovermode="x unified", template="plotly_white")
             st.plotly_chart(fig_line, use_container_width=True)
 
-            # Pie & Bar Chart (Row 4)
+            # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
@@ -183,7 +208,7 @@ try:
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", showlegend=False)
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
-            # Tabel Detail (Row 5)
+            # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
                 df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True])
