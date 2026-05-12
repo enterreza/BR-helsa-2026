@@ -8,12 +8,10 @@ import os
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
 
-# --- LOGO DI POJOK KIRI ATAS ---
+# --- LOGO ---
 LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
-else:
-    st.warning("⚠️ File logo 'HELSA Rumah sakit.png' tidak ditemukan.")
 
 # --- DEFINISI WARNA TETAP PER RS ---
 COLOR_MAP = {
@@ -101,7 +99,6 @@ try:
     if not df_all.empty:
         list_cabang = sorted(df_all['Cabang'].unique())
         selected_cabang = st.sidebar.multiselect("Pilih Cabang", list_cabang, default=list_cabang)
-        
         available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
         selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
@@ -135,53 +132,42 @@ try:
             st.markdown("---")
 
             # --- ROW 2: TREN YoY (REVENUE BAR & EBITDA LINE) ---
-            
-            # 1. Grafik Kuartal
-            st.subheader("📊 Analisis Tren YoY per Kuartal")
-            df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[['Actual Revenue (Total)', 'Actual EBITDA']].sum().reset_index()
-            df_q_yoy['Kuartal'] = pd.Categorical(df_q_yoy['Kuartal'], categories=quarter_order, ordered=True)
-            df_q_yoy = df_q_yoy.sort_values(['Kuartal', 'Tahun'])
-            
-            fig_q_comb = go.Figure()
-            for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
-                yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
-                fig_q_comb.add_trace(go.Bar(x=yr_data['Kuartal'], y=yr_data['Actual Revenue (Total)'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
-            
-            for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
-                yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
-                fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
-
-            fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified")
-            st.plotly_chart(fig_q_comb, use_container_width=True)
-
-            # 2. Grafik Bulanan
-            st.subheader("📅 Analisis Tren YoY per Bulan")
+            st.subheader("📊 Analisis Tren YoY per Bulan (Revenue vs EBITDA)")
             df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[['Actual Revenue (Total)', 'Actual EBITDA']].sum().reset_index()
             df_m_yoy['Bulan'] = pd.Categorical(df_m_yoy['Bulan'], categories=month_order, ordered=True)
             df_m_yoy = df_m_yoy.sort_values(['Bulan', 'Tahun'])
             
-            fig_m_comb = go.Figure()
+            fig_comb = go.Figure()
             for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
                 yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
-                fig_m_comb.add_trace(go.Bar(x=yr_data['Bulan'], y=yr_data['Actual Revenue (Total)'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
+                fig_comb.add_trace(go.Bar(x=yr_data['Bulan'], y=yr_data['Actual Revenue (Total)'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
             
             for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
                 yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
-                fig_m_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
+                fig_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            # Label % Growth Monthly Revenue
+            fig_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_comb, use_container_width=True)
+
+            # --- ROW 3: TREN PERTUMBUHAN EBITDA YoY ---
+            st.subheader("📈 Tren Pertumbuhan EBITDA YoY: 2026 vs 2025")
+            fig_ebitda_growth = px.bar(df_m_yoy, x='Bulan', y='Actual EBITDA', color='Tahun', barmode='group',
+                                       color_discrete_map={"2026": "#D35400", "2025": "#FAD7A0"})
+            
+            # Label Growth EBITDA
             for b in selected_bulan:
                 rows = df_m_yoy[df_m_yoy['Bulan'] == b]
-                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
-                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
-                if v26 != 0 and v25 != 0:
-                    pct = ((v26 - v25) / v25 * 100)
-                    fig_m_comb.add_annotation(x=b, y=v26, text=f"{pct:.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=10))
+                e26 = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
+                e25 = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
+                if e26 != 0 and e25 != 0:
+                    pct_e = ((e26 - e25) / abs(e25) * 100) # abs untuk antisipasi base minus
+                    fig_ebitda_growth.add_annotation(x=b, y=e26, text=f"{pct_e:.0f}%", showarrow=False, yshift=10, 
+                                                     font=dict(color="#1E8449" if pct_e>=0 else "#C0392B", size=10, family="Arial Bold"))
 
-            fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified")
-            st.plotly_chart(fig_m_comb, use_container_width=True)
+            fig_ebitda_growth.update_layout(yaxis_tickformat=',.0f', yaxis_title="EBITDA (Rp)", template="plotly_white")
+            st.plotly_chart(fig_ebitda_growth, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS ---
+            # --- ROW 4: TREN PER RS ---
             st.subheader("🏥 Tren Pendapatan per RS (2026)")
             df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
             df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
@@ -193,7 +179,7 @@ try:
             fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
             st.plotly_chart(fig_line, use_container_width=True)
 
-            # --- ROW 4: KOMPOSISI & EBITDA ---
+            # --- ROW 5: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("📊 Komposisi Pendapatan per RS")
@@ -207,7 +193,7 @@ try:
                 fig_ebitda.update_layout(yaxis_tickformat=',.0f', showlegend=False)
                 st.plotly_chart(fig_ebitda, use_container_width=True)
 
-            # --- ROW 5: TABEL DETAIL ---
+            # --- ROW 6: TABEL DETAIL ---
             st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
                 df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True])
