@@ -151,15 +151,23 @@ try:
                 yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
                 fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            # Persentase Pertumbuhan Kuartal dengan ARROW
+            # Pertumbuhan Kuartal (Revenue & EBITDA)
             for q in df_q_yoy['Kuartal'].unique():
                 rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
-                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
-                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
-                if v26 != 0 and v25 != 0:
-                    pct = ((v26 - v25) / v25 * 100)
-                    arrow = "▲" if pct >= 0 else "▼"
-                    fig_q_comb.add_annotation(x=q, y=v26, text=f"{arrow} {abs(pct):.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=12, family="Arial Bold"))
+                
+                # Revenue Growth
+                v26_r = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                v25_r = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                if v26_r != 0 and v25_r != 0:
+                    pct_r = ((v26_r - v25_r) / v25_r * 100)
+                    fig_q_comb.add_annotation(x=q, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=11, family="Arial Bold"))
+                
+                # EBITDA Growth
+                v26_e = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
+                v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
+                if v26_e != 0 and v25_e != 0:
+                    pct_e = ((v26_e - v25_e) / abs(v25_e) * 100)
+                    fig_q_comb.add_annotation(x=q, y=v26_e, text=f"{'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.1f}%", showarrow=False, yshift=-15, font=dict(color="#D35400", size=10, family="Arial"))
 
             fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_q_comb, use_container_width=True)
@@ -179,15 +187,23 @@ try:
                 yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
                 fig_m_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            # Persentase Pertumbuhan Bulanan dengan ARROW
+            # Pertumbuhan Bulanan (Revenue & EBITDA)
             for b in selected_bulan:
                 rows = df_m_yoy[df_m_yoy['Bulan'] == b]
-                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
-                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
-                if v26 != 0 and v25 != 0:
-                    pct = ((v26 - v25) / v25 * 100)
-                    arrow = "▲" if pct >= 0 else "▼"
-                    fig_m_comb.add_annotation(x=b, y=v26, text=f"{arrow} {abs(pct):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=10, family="Arial Bold"))
+                
+                # Revenue Growth
+                v26_r = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                v25_r = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                if v26_r != 0 and v25_r != 0:
+                    pct_r = ((v26_r - v25_r) / v25_r * 100)
+                    fig_m_comb.add_annotation(x=b, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=10, family="Arial Bold"))
+                
+                # EBITDA Growth
+                v26_e = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
+                v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
+                if v26_e != 0 and v25_e != 0:
+                    pct_e = ((v26_e - v25_e) / abs(v25_e) * 100)
+                    fig_m_comb.add_annotation(x=b, y=v26_e, text=f"{'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.0f}%", showarrow=False, yshift=-15, font=dict(color="#D35400", size=9, family="Arial"))
 
             fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_m_comb, use_container_width=True)
