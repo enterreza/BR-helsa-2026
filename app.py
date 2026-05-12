@@ -108,7 +108,7 @@ try:
         df_filtered = df_all[(df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
         df_2026 = df_filtered[df_filtered['Tahun'] == '2026']
 
-        st.title("🏥 Performance Dashboard RS Group")
+        st.title("🏥 Performance Dashboard Helsa Group")
         st.markdown("---")
 
         if not df_2026.empty:
