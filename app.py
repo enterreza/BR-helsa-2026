@@ -134,75 +134,64 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: TREN YoY (COMBINED REVENUE BAR & EBITDA LINE) ---
-            st.subheader("📊 Analisis Tren YoY: Pendapatan (Bar) & EBITDA (Line)")
+            # --- ROW 2: TREN YoY (COMBINED REVENUE & EBITDA) ---
             
-            # Persiapan data gabungan per Bulan
-            df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[['Actual Revenue (Total)', 'Actual EBITDA']].sum().reset_index()
-            df_m_yoy['Bulan'] = pd.Categorical(df_m_yoy['Bulan'], categories=month_order, ordered=True)
-            df_m_yoy = df_m_yoy.sort_values(['Bulan', 'Tahun'])
+            # 1. Grafik Kuartal (Revenue Bar & EBITDA Line)
+            st.subheader("📊 Analisis Tren YoY per Kuartal")
+            df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[['Actual Revenue (Total)', 'Actual EBITDA']].sum().reset_index()
+            df_q_yoy['Kuartal'] = pd.Categorical(df_q_yoy['Kuartal'], categories=quarter_order, ordered=True)
+            df_q_yoy = df_q_yoy.sort_values(['Kuartal', 'Tahun'])
             
-            fig_comb = go.Figure()
-            
-            # 1. BARS: Revenue
+            fig_q_comb = go.Figure()
             for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
-                yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
-                fig_comb.add_trace(go.Bar(
-                    x=yr_data['Bulan'], y=yr_data['Actual Revenue (Total)'],
-                    name=f"Revenue {yr}", marker_color=color, offsetgroup=yr
-                ))
-
-            # 2. LINES: EBITDA
-            for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
-                yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
-                fig_comb.add_trace(go.Scatter(
-                    x=yr_data['Bulan'], y=yr_data['Actual EBITDA'],
-                    name=f"EBITDA {yr}", mode='lines+markers',
-                    line=dict(color=color, width=3, dash=dash),
-                    marker=dict(size=8)
-                ))
+                yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
+                fig_q_comb.add_trace(go.Bar(x=yr_data['Kuartal'], y=yr_data['Actual Revenue (Total)'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
             
-            # Tambahkan label % Growth Revenue di atas Bar 2026
-            for b in selected_bulan:
-                rows = df_m_yoy[df_m_yoy['Bulan'] == b]
+            for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
+                yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
+                fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
+
+            # Label % Growth Quarter
+            for q in df_q_yoy['Kuartal'].unique():
+                rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
                 v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
                 v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
                 if v26 != 0 and v25 != 0:
                     pct = ((v26 - v25) / v25 * 100)
-                    color_label = "#1E8449" if pct >= 0 else "#C0392B"
-                    fig_comb.add_annotation(x=b, y=v26, text=f"{pct:.0f}%", 
-                                            showarrow=False, yshift=10, font=dict(color=color_label, size=10))
+                    fig_q_comb.add_annotation(x=q, y=v26, text=f"{pct:.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=12, family="Arial Bold"))
 
-            fig_comb.update_layout(
-                yaxis_tickformat=',.0f', yaxis_title="Nilai (Rp)",
-                template="plotly_white", barmode='group', hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig_comb, use_container_width=True)
+            fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_q_comb, use_container_width=True)
 
-            # --- ROW 3: TREN KUARTAL & PER RS ---
-            col_q, col_rs = st.columns([1, 1])
+            # 2. Grafik Bulanan (Revenue Bar & EBITDA Line)
+            st.subheader("📅 Analisis Tren YoY per Bulan")
+            df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[['Actual Revenue (Total)', 'Actual EBITDA']].sum().reset_index()
+            df_m_yoy['Bulan'] = pd.Categorical(df_m_yoy['Bulan'], categories=month_order, ordered=True)
+            df_m_yoy = df_m_yoy.sort_values(['Bulan', 'Tahun'])
             
-            with col_q:
-                st.subheader("📈 Tren Pendapatan per Kuartal")
-                df_q_group = df_filtered.groupby(['Kuartal', 'Tahun'])['Actual Revenue (Total)'].sum().reset_index()
-                df_q_group['Kuartal'] = pd.Categorical(df_q_group['Kuartal'], categories=quarter_order, ordered=True)
-                fig_q = px.bar(df_q_group, x='Kuartal', y='Actual Revenue (Total)', color='Tahun', barmode='group',
-                               color_discrete_map={"2026": "#2E86C1", "2025": "#AED6F1"})
-                fig_q.update_layout(yaxis_tickformat=',.0f', template="plotly_white")
-                st.plotly_chart(fig_q, use_container_width=True)
+            fig_m_comb = go.Figure()
+            for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
+                yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
+                fig_m_comb.add_trace(go.Bar(x=yr_data['Bulan'], y=yr_data['Actual Revenue (Total)'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
+            
+            for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
+                yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
+                fig_m_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            with col_rs:
-                st.subheader("🏥 Tren Pendapatan per RS (2026)")
-                df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
-                df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
-                fig_line = go.Figure()
-                for rs in df_rs_actual.columns:
-                    color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
-                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
-                    fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Tar {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
-                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
-                st.plotly_chart(fig_line, use_container_width=True)
+            fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_m_comb, use_container_width=True)
+
+            # --- ROW 3: TREN PER RS ---
+            st.subheader("🏥 Tren Pendapatan per RS (2026)")
+            df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
+            df_rs_target = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Target Revenue (Total)', aggfunc='sum').reindex(month_order)
+            fig_line = go.Figure()
+            for rs in df_rs_actual.columns:
+                color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
+                fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
+                fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Tar {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
+            fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+            st.plotly_chart(fig_line, use_container_width=True)
 
             # --- ROW 4: KOMPOSISI & EBITDA ---
             col_a, col_b = st.columns(2)
@@ -222,14 +211,7 @@ try:
             st.markdown("---")
             with st.expander("🔍 Lihat Detail Tabel Data"):
                 df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA']].sort_values(['Tahun', 'Bulan'], ascending=[False, True])
-                st.dataframe(
-                    df_display, 
-                    use_container_width=True,
-                    column_config={
-                        "Actual Revenue (Total)": st.column_config.NumberColumn("Actual Revenue (Total)", format="%d"),
-                        "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%d")
-                    }
-                )
+                st.dataframe(df_display, use_container_width=True, column_config={"Actual Revenue (Total)": st.column_config.NumberColumn(format="%d"), "Actual EBITDA": st.column_config.NumberColumn(format="%d")})
 
 except Exception as e:
     st.error(f"Sistem Error: {e}")
