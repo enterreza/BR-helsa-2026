@@ -6,7 +6,7 @@ import re
 import os
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="Dashboard Keuangan RS", layout="wide", page_icon="📈")
+st.set_page_config(page_title="Dashboard Performance Helsa", layout="wide", page_icon="📈")
 
 # --- LOGO DI POJOK KIRI ATAS ---
 LOGO_FILE = "HELSA Rumah sakit.png"
