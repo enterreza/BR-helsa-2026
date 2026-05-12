@@ -111,7 +111,7 @@ try:
         st.markdown("---")
 
         if not df_2026.empty:
-            # --- ROW 1: KPI ---
+            # --- KPI ---
             rev_act_26 = df_2026['Actual Revenue (Total)'].sum()
             rev_tar_26 = df_2026['Target Revenue (Total)'].sum()
             ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
@@ -119,13 +119,13 @@ try:
             ebit_tar_26 = df_2026['Target EBITDA'].sum()
             ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
 
-            col1, col2 = st.columns(2)
-            with col1:
+            c1, c2 = st.columns(2)
+            with c1:
                 st.subheader("Total Pendapatan 2026")
                 st.write(f"### {format_rupiah_human(rev_act_26)}")
                 st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
                 st.write(f":green[{ach_rev:.1f}% vs Target 2026]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target 2026]")
-            with col2:
+            with c2:
                 st.subheader("Total EBITDA 2026")
                 st.write(f"### {format_rupiah_human(ebit_act_26)}")
                 st.caption(f"Target: {format_rupiah_human(ebit_tar_26)}")
@@ -134,47 +134,51 @@ try:
             st.markdown("---")
 
             # --- ROW 2: TREN YoY (EBITDA INSIDE BARS) ---
-            
             def create_combined_chart(df_group, x_col, x_order, title):
                 df_group[x_col] = pd.Categorical(df_group[x_col], categories=x_order, ordered=True)
                 df_group = df_group.sort_values([x_col, 'Tahun'])
                 
                 fig = go.Figure()
+                
                 # Revenue Bars
                 for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
                     yr_data = df_group[df_group['Tahun'] == yr]
                     fig.add_trace(go.Bar(
                         x=yr_data[x_col], y=yr_data['Actual Revenue (Total)'],
                         name=f"Rev {yr}", marker_color=color,
-                        offsetgroup=yr, customdata=yr_data['Tahun']
+                        offsetgroup=yr
                     ))
                 
-                # EBITDA Points (Positioned inside the respective bars)
-                # We use 'x' as the category and 'offset' to align with grouped bars
-                for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
+                # EBITDA Points & Line (Using numeric mapping for X-axis positioning)
+                # This places the markers exactly in the middle of the grouped bars
+                x_indices = list(range(len(x_order)))
+                for yr, color, dash, offset in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"], [-0.2, 0.2]):
                     yr_data = df_group[df_group['Tahun'] == yr]
-                    # Logic: Offset 2025 to the left, 2026 to the right
-                    x_offset = -0.2 if yr == "2025" else 0.2
+                    # Create numeric X positions for the markers
+                    # We map categories to numbers and add the offset
+                    current_x = [x_indices[x_order.index(val)] + offset for val in yr_data[x_col]]
+                    
                     fig.add_trace(go.Scatter(
-                        x=yr_data[x_col], y=yr_data['Actual EBITDA'],
+                        x=current_x, y=yr_data['Actual EBITDA'],
                         name=f"EBITDA {yr}", mode='lines+markers',
                         line=dict(color=color, width=3, dash=dash),
                         marker=dict(size=10, symbol='diamond'),
-                        xshift=x_offset * 100 # Adjusting position to be inside bar
+                        hoverinfo='y+name'
                     ))
 
                 # Growth Label
-                for x_val in df_group[x_col].unique():
+                for i, x_val in enumerate(x_order):
                     rows = df_group[df_group[x_col] == x_val]
                     v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
                     v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
                     if v26 != 0 and v25 != 0:
                         pct = ((v26 - v25) / v25 * 100)
-                        fig.add_annotation(x=x_val, y=v26, text=f"{pct:.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=12, family="Arial Bold"))
+                        fig.add_annotation(x=i + 0.2, y=v26, text=f"{pct:.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=12, family="Arial Bold"))
 
                 fig.update_layout(
                     title=title, yaxis_tickformat=',.0f', template="plotly_white", 
-                    barmode='group', hovermode="x unified",
+                    barmode='group',
+                    xaxis=dict(tickmode='array', tickvals=x_indices, ticktext=x_order),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
                 return fig
