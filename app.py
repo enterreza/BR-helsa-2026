@@ -134,7 +134,7 @@ try:
 
             st.markdown("---")
 
-            # --- ROW 2: TREN YoY (REVENUE BAR & EBITDA LINE) ---
+            # --- ROW 2: TREN YoY ---
             
             # 1. Grafik Kuartal
             st.subheader("📊 Analisis Tren YoY per Kuartal")
@@ -151,7 +151,16 @@ try:
                 yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
                 fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified")
+            # --- TAMBAHAN LABEL PERSENTASE KUARTAL ---
+            for q in df_q_yoy['Kuartal'].unique():
+                rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
+                v26 = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
+                v25 = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
+                if v26 != 0 and v25 != 0:
+                    pct = ((v26 - v25) / v25 * 100)
+                    fig_q_comb.add_annotation(x=q, y=v26, text=f"{pct:.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=12, family="Arial Bold"))
+
+            fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_q_comb, use_container_width=True)
 
             # 2. Grafik Bulanan
@@ -178,7 +187,7 @@ try:
                     pct = ((v26 - v25) / v25 * 100)
                     fig_m_comb.add_annotation(x=b, y=v26, text=f"{pct:.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct>=0 else "#C0392B", size=10))
 
-            fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified")
+            fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
             # --- ROW 3: TREN PER RS ---
