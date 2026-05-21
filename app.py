@@ -64,7 +64,7 @@ def get_quarter(bulan):
 @st.cache_data
 def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
-    sheets = {"2026": "app_data", "2025": "app_data_2025"}
+    sheets = {"2026": "app_data_2026", "2025": "app_data_2025"}
     combined_list = []
     numeric_cols = ['Actual Revenue (Total)', 'Actual EBITDA', 'Target Revenue (Total)', 'Target EBITDA']
 
