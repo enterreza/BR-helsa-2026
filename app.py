@@ -9,50 +9,46 @@ import os
 st.set_page_config(page_title="Dashboard Performance Helsa", layout="wide", page_icon="📈")
 
 # --- KONFIGURASI KREDENSIAL LOGIN ---
-# Silakan ubah username dan password di bawah ini sesuai kebutuhan Anda
 USER_CREDENTIALS = {
     "admin": "helsa2026",
     "management": "helsa2026"
 }
 
-# --- FUNGSI MODUL LOGIN ---
-def login_modul():
-    """Membuat form login dan mengecek validasi kredensial"""
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = False
+# --- INISIALISASI SESSION STATE ---
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 
-    if not st.session_state["logged_in"]:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.write("")
-            st.write("")
-            # Tampilkan logo di halaman login jika file ada
-            LOGO_FILE = "HELSA Rumah sakit.png"
-            if os.path.exists(LOGO_FILE):
-                st.image(LOGO_FILE, use_container_width=False, width=250)
-            
-            st.subheader("🔐 Silakan Login Terlebih Dahulu")
-            
-            username = st.text_input("Username", placeholder="Masukkan username Anda")
-            password = st.text_input("Password", type="password", placeholder="Masukkan password Anda")
-            
-            if st.button("Login", use_container_width=True):
-                if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
-                    st.session_state["logged_in"] = True
-                    st.success("Login Berhasil!")
-                    st.rerun() # Muat ulang halaman untuk membuka dashboard
-                else:
-                    st.error("❌ Username atau Password salah. Silakan coba lagi.")
-        return False
-    return True
-
-# --- JALANKAN PROSES LOGIN ---
-# Jika user belum login, hentikan script dashboard di sini (st.stop)
-if not login_modul():
+# =====================================================================
+# --- 1. PROSES PENGECEKAN HALAMAN LOGIN ---
+# =====================================================================
+if not st.session_state["logged_in"]:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("")
+        st.write("")
+        # Tampilkan logo di halaman login jika file ada
+        LOGO_FILE = "HELSA Rumah sakit.png"
+        if os.path.exists(LOGO_FILE):
+            st.image(LOGO_FILE, use_container_width=False, width=250)
+        
+        st.subheader("🔐 Silakan Login Terlebih Dahulu")
+        
+        username = st.text_input("Username", placeholder="Masukkan username Anda")
+        password = st.text_input("Password", type="password", placeholder="Masukkan password Anda")
+        
+        if st.button("Login", use_container_width=True):
+            if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
+                st.session_state["logged_in"] = True
+                st.success("Login Berhasil! Membuka Dashboard...")
+                st.rerun()  # Sekarang aman digunakan karena berada di main script level
+            else:
+                st.error("❌ Username atau Password salah. Silakan coba lagi.")
+    
+    # Hentikan proses eksekusi script dashboard di bawah jika belum login
     st.stop()
 
 # =====================================================================
-# --- JIKA SUDAH LOGIN, TAMPILKAN SELURUH DASHBOARD DI BAWAH INI ---
+# --- 2. JIKA SUDAH LOGIN, TAMPILKAN SELURUH DASHBOARD DI BAWAH INI ---
 # =====================================================================
 
 # --- TOMBOL LOGOUT DI SIDEBAR ---
@@ -140,7 +136,7 @@ def load_combined_data():
             continue
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
-# --- MAIN APP ---
+# --- MAIN DASHBOARD APP ---
 try:
     df_all = load_combined_data()
     quarter_order = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -204,7 +200,6 @@ try:
             # Pertumbuhan Kuartal (Revenue & EBITDA)
             for q in df_q_yoy['Kuartal'].unique():
                 rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
-                
                 v26_r = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
                 v25_r = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
                 if v26_r != 0 and v25_r != 0:
@@ -238,7 +233,6 @@ try:
             # Pertumbuhan Bulanan (Revenue & EBITDA)
             for b in selected_bulan:
                 rows = df_m_yoy[df_m_yoy['Bulan'] == b]
-                
                 v26_r = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
                 v25_r = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
                 if v26_r != 0 and v25_r != 0:
