@@ -8,12 +8,58 @@ import os
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Dashboard Performance Helsa", layout="wide", page_icon="📈")
 
-# --- LOGO DI POJOK KIRI ATAS ---
+# --- KONFIGURASI KREDENSIAL LOGIN ---
+USER_CREDENTIALS = {
+    "admin": "helsa2026",
+    "management": "helsa2026"
+}
+
+# --- INISIALISASI SESSION STATE ---
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+# =====================================================================
+# --- 1. PROSES PENGECEKAN HALAMAN LOGIN ---
+# =====================================================================
+if not st.session_state["logged_in"]:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("")
+        st.write("")
+        # Tampilkan logo di halaman login jika file ada
+        LOGO_FILE = "HELSA Rumah sakit.png"
+        if os.path.exists(LOGO_FILE):
+            st.image(LOGO_FILE, use_container_width=False, width=250)
+        
+        st.subheader("🔐 Silakan Login Terlebih Dahulu")
+        
+        username = st.text_input("Username", placeholder="Masukkan username Anda")
+        password = st.text_input("Password", type="password", placeholder="Masukkan password Anda")
+        
+        if st.button("Login", use_container_width=True):
+            if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
+                st.session_state["logged_in"] = True
+                st.success("Login Berhasil! Membuka Dashboard...")
+                st.rerun()  # Sekarang aman digunakan karena berada di main script level
+            else:
+                st.error("❌ Username atau Password salah. Silakan coba lagi.")
+    
+    # Hentikan proses eksekusi script dashboard di bawah jika belum login
+    st.stop()
+
+# =====================================================================
+# --- 2. JIKA SUDAH LOGIN, TAMPILKAN SELURUH DASHBOARD DI BAWAH INI ---
+# =====================================================================
+
+# --- TOMBOL LOGOUT DI SIDEBAR ---
+if st.sidebar.button("🚪 Logout", use_container_width=True):
+    st.session_state["logged_in"] = False
+    st.rerun()
+
+# --- LOGO DI POJOK KIRI ATAS DASHBOARD ---
 LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
-else:
-    st.warning("⚠️ File logo 'HELSA Rumah sakit.png' tidak ditemukan.")
 
 # --- DEFINISI WARNA TETAP PER RS ---
 COLOR_MAP = {
@@ -64,7 +110,7 @@ def get_quarter(bulan):
 @st.cache_data
 def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
-    sheets = {"2026": "app_data_2026", "2025": "app_data_2025"}
+    sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     numeric_cols = ['Actual Revenue (Total)', 'Actual EBITDA', 'Target Revenue (Total)', 'Target EBITDA']
 
@@ -90,7 +136,7 @@ def load_combined_data():
             continue
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
-# --- MAIN APP ---
+# --- MAIN DASHBOARD APP ---
 try:
     df_all = load_combined_data()
     quarter_order = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -154,15 +200,12 @@ try:
             # Pertumbuhan Kuartal (Revenue & EBITDA)
             for q in df_q_yoy['Kuartal'].unique():
                 rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
-                
-                # Revenue Growth
                 v26_r = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
                 v25_r = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
                 if v26_r != 0 and v25_r != 0:
                     pct_r = ((v26_r - v25_r) / v25_r * 100)
                     fig_q_comb.add_annotation(x=q, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.1f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=11, family="Arial Bold"))
                 
-                # EBITDA Growth
                 v26_e = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
                 v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
                 if v26_e != 0 and v25_e != 0:
@@ -190,15 +233,12 @@ try:
             # Pertumbuhan Bulanan (Revenue & EBITDA)
             for b in selected_bulan:
                 rows = df_m_yoy[df_m_yoy['Bulan'] == b]
-                
-                # Revenue Growth
                 v26_r = rows[rows['Tahun'] == '2026']['Actual Revenue (Total)'].sum()
                 v25_r = rows[rows['Tahun'] == '2025']['Actual Revenue (Total)'].sum()
                 if v26_r != 0 and v25_r != 0:
                     pct_r = ((v26_r - v25_r) / v25_r * 100)
                     fig_m_comb.add_annotation(x=b, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=10, family="Arial Bold"))
                 
-                # EBITDA Growth
                 v26_e = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
                 v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
                 if v26_e != 0 and v25_e != 0:
