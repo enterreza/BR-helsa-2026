@@ -103,11 +103,10 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Target standard kolom internal script
+    # Kolom numerik yang diproses dari Spreadsheet
     numeric_cols = [
         'Actual Revenue (Total)', 'Actual EBITDA', 'Target Revenue (Total)', 'Target EBITDA',
-        'Actual Revenue Outpatient', 'Actual Revenue Inpatient',
-        'Volume Outpatient', 'Volume Inpatient'
+        'Actual Revenue Outpatient', 'Actual Revenue Inpatient'
     ]
 
     for year, s_name in sheets.items():
@@ -116,19 +115,12 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # --- PENYESUAIAN MAP KOLOM YANG PASTI SESUAI STRUKTUR ANDA ---
+            # Sinkronisasi kolom sesuai struktur data source Anda
             for col in df_tmp.columns:
-                if col in ['Actual Revenue (Rajal Total)', 'Revenue Rajal', 'Rev Rajal']:
+                if col in ['Actual Revenue (Rajal Total)', 'Revenue Rajal', 'Actual Revenue Outpatient']:
                     df_tmp.rename(columns={col: 'Actual Revenue Outpatient'}, inplace=True)
-                
-                if col in ['Actual Revenue (Ranap Total)', 'Revenue Ranap', 'Rev Ranap']:
+                if col in ['Actual Revenue (Ranap Total)', 'Revenue Ranap', 'Actual Revenue Inpatient']:
                     df_tmp.rename(columns={col: 'Actual Revenue Inpatient'}, inplace=True)
-                
-                # Menjaga volume pasien jika ada kolom Volume tersendiri di sheets Anda
-                if col in ['Volume Rajal', 'Volume Outpatient']:
-                    df_tmp.rename(columns={col: 'Volume Outpatient'}, inplace=True)
-                if col in ['Volume Ranap', 'Volume Inpatient']:
-                    df_tmp.rename(columns={col: 'Volume Inpatient'}, inplace=True)
 
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
@@ -187,7 +179,7 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
                 
-                # Mengambil nilai rupiah berdasarkan mapping terbaru
+                # Mengambil nilai rupiah Rajal & Ranap untuk KPI info
                 rev_rajal_26 = df_2026['Actual Revenue Outpatient'].sum()
                 rev_ranap_26 = df_2026['Actual Revenue Inpatient'].sum()
 
@@ -207,7 +199,7 @@ try:
 
                 st.markdown("---")
 
-            # --- ROW 2: TREN YOY FINANSIAL ---
+            # --- ROW 2: TREN YOY FINANSIAL (KEMBALI KE SEMULA) ---
             st.subheader("📊 Analisis Tren Financial YoY per Kuartal")
             df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[['Actual Revenue (Total)', 'Actual EBITDA']].sum().reset_index()
             df_q_yoy['Kuartal'] = pd.Categorical(df_q_yoy['Kuartal'], categories=quarter_order, ordered=True)
@@ -223,6 +215,7 @@ try:
                     yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
                     fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
+            # Growth Annotations
             if "2025" in selected_tahun and "2026" in selected_tahun:
                 for q in df_q_yoy['Kuartal'].unique():
                     rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
@@ -239,29 +232,24 @@ try:
 
             st.plotly_chart(fig_q_comb, use_container_width=True)
 
-            # --- ROW 3: GRAFIK KOMPOSISI FINANSIAL (RAJAL VS RANAP) & KONTRIBUSI RS ---
+            # --- ROW 3: KONTRIBUSI RS & TREN LINE PER RS (KEMBALI KE SEMULA) ---
             col_x, col_y = st.columns(2)
             with col_x:
-                st.subheader("📊 Komposisi Total Revenue: Rajal vs Ranap (Rupiah)")
-                tot_rajal = df_filtered['Actual Revenue Outpatient'].sum()
-                tot_ranap = df_filtered['Actual Revenue Inpatient'].sum()
-                
-                fig_comp_rev = px.pie(
-                    names=['Revenue Rawat Jalan', 'Revenue Rawat Inap'],
-                    values=[tot_rajal, tot_ranap],
-                    hole=0.4,
-                    color_discrete_sequence=["#3498DB", "#9B59B6"]
-                )
-                fig_comp_rev.update_traces(textinfo='percent+label', hovertemplate='%{label}<br>Nilai: Rp %{value:,.0f}')
-                st.plotly_chart(fig_comp_rev, use_container_width=True)
+                st.subheader("🏥 Tren Pendapatan per RS")
+                df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
+                fig_line = go.Figure()
+                for rs in df_rs_actual.columns:
+                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=rs, mode='lines+markers', line=dict(color=COLOR_MAP.get(rs, DEFAULT_COLORS[0]))))
+                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+                st.plotly_chart(fig_line, use_container_width=True)
                 
             with col_y:
-                st.subheader("🏥 Distribusi Total Revenue per Cabang RS")
+                st.subheader("📊 Kontribusi Total Revenue per RS")
                 fig_pie_rs = px.pie(df_filtered, values='Actual Revenue (Total)', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_pie_rs.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie_rs, use_container_width=True)
 
-            # --- ROW 4: TABEL DETAIL ---
+            # --- ROW 4: TABEL DETAIL (DENGAN REVENUE RAJAL & RANAP) ---
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
@@ -284,7 +272,7 @@ try:
             st.download_button(
                 label="📥 Download Data Report (CSV Format)",
                 data=csv_data,
-                file_name="Performance_Report_Helsa_Detailed.csv",
+                file_name="Performance_Report_Helsa.csv",
                 mime="text/csv",
                 use_container_width=True
             )
