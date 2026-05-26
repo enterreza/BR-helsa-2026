@@ -103,10 +103,11 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Menambahkan kolom Rajal dan Ranap ke dalam daftar kolom numerik yang dibersihkan
+    # Deteksi dan pembersihan finansial Revenue Rajal & Ranap
     numeric_cols = [
         'Actual Revenue (Total)', 'Actual EBITDA', 'Target Revenue (Total)', 'Target EBITDA',
-        'Volume Outpatient', 'Volume Inpatient'  # Menyesuaikan nama kolom Rajal/Ranap dari Sheets
+        'Actual Revenue Outpatient', 'Actual Revenue Inpatient', # Kolom finansial Rajal/Ranap
+        'Volume Outpatient', 'Volume Inpatient'
     ]
 
     for year, s_name in sheets.items():
@@ -115,7 +116,9 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # Kecocokan nama kolom alternatif jika di sheet namanya berbeda (Rajal/Ranap)
+            # Mapping nama kolom fleksibel jika ada variasi bahasa/penamaan di sheets
+            if 'Revenue Rajal' in df_tmp.columns: df_tmp.rename(columns={'Revenue Rajal': 'Actual Revenue Outpatient'}, inplace=True)
+            if 'Revenue Ranap' in df_tmp.columns: df_tmp.rename(columns={'Revenue Ranap': 'Actual Revenue Inpatient'}, inplace=True)
             if 'Volume Rajal' in df_tmp.columns: df_tmp.rename(columns={'Volume Rajal': 'Volume Outpatient'}, inplace=True)
             if 'Volume Ranap' in df_tmp.columns: df_tmp.rename(columns={'Volume Ranap': 'Volume Inpatient'}, inplace=True)
 
@@ -176,23 +179,23 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
                 
-                # KPI Volume Baru
-                rajal_26 = df_2026['Volume Outpatient'].sum()
-                ranap_26 = df_2026['Volume Inpatient'].sum()
+                # Finansial Breakdown Rajal & Ranap
+                rev_rajal_26 = df_2026['Actual Revenue Outpatient'].sum()
+                rev_ranap_26 = df_2026['Actual Revenue Inpatient'].sum()
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.subheader("Financial Performance")
-                    st.write(f"**Revenue 2026:** {format_rupiah_human(rev_act_26)} ({ach_rev:.1f}% vs Tar)")
-                    st.write(f"**EBITDA 2026:** {format_rupiah_human(ebit_act_26)} ({ach_ebit:.1f}% vs Tar)")
+                    st.subheader("Financial Revenue")
+                    st.write(f"**Total Revenue:** {format_rupiah_human(rev_act_26)} ({ach_rev:.1f}% vs Tar)")
+                    st.write(f"**EBITDA:** {format_rupiah_human(ebit_act_26)} ({ach_ebit:.1f}% vs Tar)")
                 with col2:
+                    st.subheader("Revenue Breakdown (2026)")
+                    st.write(f"**Revenue Rajal:** {format_rupiah_human(rev_rajal_26)}")
+                    st.write(f"**Revenue Ranap:** {format_rupiah_human(rev_ranap_26)}")
+                with col3:
                     st.subheader("Profitability & Margin")
                     st.write(f"**EBITDA Margin:** {ebitda_margin_26:.2f}%")
                     st.write(":green[Kondisi Sehat]" if ebitda_margin_26 >= 15 else ":orange[Butuh Efisiensi]")
-                with col3:
-                    st.subheader("Operational Volume (2026)")
-                    st.write(f"**Rawat Jalan (Rajal):** {rajal_26:,.0f} Pasien")
-                    st.write(f"**Rawat Inap (Ranap):** {ranap_26:,.0f} Pasien")
 
                 st.markdown("---")
 
@@ -229,43 +232,46 @@ try:
 
             st.plotly_chart(fig_q_comb, use_container_width=True)
 
-            # --- ROW 3: GRAFIK BARU TREN OPERASIONAL (RAJAL & RANAP) ---
+            # --- ROW 3: TREN VOLUME OPERASIONAL ---
             st.subheader("📅 Analisis Tren Volume Operasional: Rawat Jalan vs Rawat Inap")
             df_m_ops = df_filtered.groupby(['Bulan', 'Tahun'])[['Volume Outpatient', 'Volume Inpatient']].sum().reset_index()
             df_m_ops['Bulan'] = pd.Categorical(df_m_ops['Bulan'], categories=month_order, ordered=True)
             df_m_ops = df_m_ops.sort_values(['Bulan', 'Tahun'])
 
             fig_ops = go.Figure()
-            # Bar untuk Rawat Jalan (Outpatient)
             for yr, color in zip(["2025", "2026"], ["#A9DFBF", "#27AE60"]):
                 if yr in selected_tahun:
                     data_yr = df_m_ops[df_m_ops['Tahun'] == yr]
-                    fig_ops.add_trace(go.Bar(x=data_yr['Bulan'], y=data_yr['Volume Outpatient'], name=f"Rajal (Outpatient) {yr}", marker_color=color, offsetgroup=f"rajal_{yr}"))
-            
-            # Line untuk Rawat Inap (Inpatient) - Menggunakan Sumbu Y Kedua jika volumenya jomplang
+                    fig_ops.add_trace(go.Bar(x=data_yr['Bulan'], y=data_yr['Volume Outpatient'], name=f"Vol Rajal {yr}", marker_color=color, offsetgroup=f"rajal_{yr}"))
             for yr, color, dash in zip(["2025", "2026"], ["#F9E79F", "#D4AC0D"], ["dash", "solid"]):
                 if yr in selected_tahun:
                     data_yr = df_m_ops[df_m_ops['Tahun'] == yr]
-                    fig_ops.add_trace(go.Scatter(x=data_yr['Bulan'], y=data_yr['Volume Inpatient'], name=f"Ranap (Inpatient) {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
+                    fig_ops.add_trace(go.Scatter(x=data_yr['Bulan'], y=data_yr['Volume Inpatient'], name=f"Vol Ranap {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
             fig_ops.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified")
             st.plotly_chart(fig_ops, use_container_width=True)
 
-            # --- ROW 4: TREN PER RS & KOMPOSISI ---
+            # --- ROW 4: KOMPOSISI REVENUE (RAJAL VS RANAP) & KONTRIBUSI RS ---
             col_x, col_y = st.columns(2)
             with col_x:
-                st.subheader("🏥 Tren Pendapatan per RS")
-                df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values='Actual Revenue (Total)', aggfunc='sum').reindex(month_order)
-                fig_line = go.Figure()
-                for rs in df_rs_actual.columns:
-                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=rs, mode='lines+markers', line=dict(color=COLOR_MAP.get(rs, DEFAULT_COLORS[0]))))
-                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white")
-                st.plotly_chart(fig_line, use_container_width=True)
+                st.subheader("📊 Komposisi Total Revenue: Rajal vs Ranap")
+                tot_rajal = df_filtered['Actual Revenue Outpatient'].sum()
+                tot_ranap = df_filtered['Actual Revenue Inpatient'].sum()
+                
+                fig_comp_rev = px.pie(
+                    names=['Revenue Rawat Jalan', 'Revenue Rawat Inap'],
+                    values=[tot_rajal, tot_ranap],
+                    hole=0.4,
+                    color_discrete_sequence=["#3498DB", "#9B59B6"]
+                )
+                fig_comp_rev.update_traces(textinfo='percent+label', hovertemplate='%{label}<br>Nilai: Rp %{value:,.0f}')
+                st.plotly_chart(fig_comp_rev, use_container_width=True)
+                
             with col_y:
-                st.subheader("📊 Komposisi Volume Rawat Jalan per RS")
-                fig_pie = px.pie(df_filtered, values='Volume Outpatient', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
-                fig_pie.update_traces(textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.subheader("🏥 Distribusi Total Revenue per Cabang RS")
+                fig_pie_rs = px.pie(df_filtered, values='Actual Revenue (Total)', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
+                fig_pie_rs.update_traces(textinfo='percent+label')
+                st.plotly_chart(fig_pie_rs, use_container_width=True)
 
             # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
@@ -274,15 +280,25 @@ try:
             df_table = df_filtered.copy()
             df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table['Actual Revenue (Total)'] * 100).fillna(0)
             
-            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Actual Revenue (Total)', 'Actual EBITDA', 'EBITDA Margin %', 'Volume Outpatient', 'Volume Inpatient']].copy()
-            df_display.rename(columns={'Volume Outpatient': 'Vol Rajal', 'Volume Inpatient': 'Vol Ranap'}, inplace=True)
+            df_display = df_table[[
+                'Tahun', 'Kuartal', 'Bulan', 'Cabang', 
+                'Actual Revenue (Total)', 'Actual Revenue Outpatient', 'Actual Revenue Inpatient',
+                'Actual EBITDA', 'EBITDA Margin %', 'Volume Outpatient', 'Volume Inpatient'
+            ]].copy()
+            
+            df_display.rename(columns={
+                'Actual Revenue Outpatient': 'Rev Rajal', 
+                'Actual Revenue Inpatient': 'Rev Ranap',
+                'Volume Outpatient': 'Vol Rajal', 
+                'Volume Inpatient': 'Vol Ranap'
+            }, inplace=True)
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
             csv_data = df_display.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download Data Report (CSV Format)",
                 data=csv_data,
-                file_name="Performance_Report_Helsa_Operational.csv",
+                file_name="Performance_Report_Helsa_Detailed.csv",
                 mime="text/csv",
                 use_container_width=True
             )
@@ -291,7 +307,9 @@ try:
                 df_display, 
                 use_container_width=True, 
                 column_config={
-                    "Actual Revenue (Total)": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
+                    "Actual Revenue (Total)": st.column_config.NumberColumn("Total Revenue", format="%,.0f"), 
+                    "Rev Rajal": st.column_config.NumberColumn("Rev Rajal", format="%,.0f"), 
+                    "Rev Ranap": st.column_config.NumberColumn("Rev Ranap", format="%,.0f"), 
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
                     "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
                     "Vol Rajal": st.column_config.NumberColumn("Vol Rajal", format="%,.0f"),
