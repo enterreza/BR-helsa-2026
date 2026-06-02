@@ -348,4 +348,78 @@ try:
                     v25_r = rows[rows['Tahun'] == '2025']['Calculated_Actual_Revenue'].sum()
                     if v26_r != 0 and v25_r != 0:
                         pct_r = ((v26_r - v25_r) / v25_r * 100)
-                        fig_m_comb.add_annotation(x=b, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E
+                        fig_m_comb.add_annotation(x=b, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=9, family="Arial Bold"))
+                    
+                    v26_e = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
+                    v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
+                    if v26_e != 0 and v25_e != 0:
+                        pct_e = ((v26_e - v25_e) / abs(v25_e) * 100)
+                        fig_m_comb.add_annotation(x=b, y=v26_e, text=f"{'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.0f}%", showarrow=False, yshift=-15, font=dict(color="#D35400", size=8, family="Arial"))
+
+            fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_m_comb, use_container_width=True)
+
+            # --- ROW 3: TREN PER RS & KONTRIBUSI ---
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.subheader("🏥 Tren Pencapaian per RS")
+                df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values='Calculated_Actual_Revenue', aggfunc='sum').reindex(month_order)
+                
+                fig_line = go.Figure()
+                for rs in df_rs_actual.columns:
+                    color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
+                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
+                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+                st.plotly_chart(fig_line, use_container_width=True)
+                
+            with col_b:
+                st.subheader("📊 Komposisi Pendapatan per RS")
+                fig_pie = px.pie(df_filtered, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
+                fig_pie.update_traces(textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            # --- ROW 4: TABEL DETAIL ---
+            st.markdown("---")
+            st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
+            
+            df_table = df_filtered.copy()
+            df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table['Calculated_Actual_Revenue'] * 100).fillna(0)
+            df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
+            df_table['ARPP (Per Pasien)'] = (df_table['Calculated_Actual_Revenue'] / df_table['Total Kunjungan']).fillna(0)
+            
+            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Actual EBITDA', 'EBITDA Margin %', 'Total Kunjungan', 'ARPP (Per Pasien)']].copy()
+            df_display.rename(columns={'Calculated_Actual_Revenue': 'Actual Revenue'}, inplace=True)
+            df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
+
+            col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+            with col_btn1:
+                excel_data = to_excel(df_display)
+                st.download_button(
+                    label="🟢 Export to Excel",
+                    data=excel_data,
+                    file_name=f"Performance_Report_Helsa.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            with col_btn2:
+                csv_data = df_display.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="🔵 Export to CSV",
+                    data=csv_data,
+                    file_name=f"Performance_Report_Helsa.csv",
+                    mime="text/csv"
+                )
+
+            st.dataframe(
+                df_display, 
+                use_container_width=True, 
+                column_config={
+                    "Actual Revenue": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
+                    "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
+                    "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
+                    "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
+                    "ARPP (Per Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
+                }
+            )
+
+except Exception as e:
+    st.error(f"Sistem Error saat memuat fitur dashboard terbaru: {e}")
