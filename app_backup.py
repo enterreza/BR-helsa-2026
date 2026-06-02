@@ -49,17 +49,14 @@ if not st.session_state["logged_in"]:
 # --- 2. JIKA SUDAH LOGIN, TAMPILKAN SELURUH DASHBOARD DI BAWAH INI ---
 # =====================================================================
 
-# --- TOMBOL LOGOUT DI SIDEBAR ---
 if st.sidebar.button("🚪 Logout", use_container_width=True):
     st.session_state["logged_in"] = False
     st.rerun()
 
-# --- LOGO DI POJOK KIRI ATAS DASHBOARD ---
 LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
 
-# --- DEFINISI WARNA TETAP PER RS ---
 COLOR_MAP = {
     "Jatirahayu": "#636EFA", 
     "Cikampek": "#EF553B",   
@@ -68,7 +65,6 @@ COLOR_MAP = {
 }
 DEFAULT_COLORS = px.colors.qualitative.Plotly
 
-# --- FUNGSI FORMAT MATA UANG ---
 def format_rupiah_human(n):
     prefix = "-" if n < 0 else ""
     val = abs(n)
@@ -79,7 +75,6 @@ def format_rupiah_human(n):
     else:
         return f"{prefix}Rp {val:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
@@ -94,7 +89,6 @@ def clean_to_numeric(value):
     except ValueError:
         return 0.0
 
-# --- FUNGSI PEMETAAN KUARTAL ---
 def get_quarter(bulan):
     q_map = {
         'Januari': 'Q1', 'Februari': 'Q1', 'Maret': 'Q1',
@@ -104,7 +98,6 @@ def get_quarter(bulan):
     }
     return q_map.get(bulan, 'Unknown')
 
-# --- FUNGSI LOAD DATA ---
 @st.cache_data
 def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
@@ -116,7 +109,7 @@ def load_combined_data():
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
         'Target Revenue (Ranap Total)', 'Actual Revenue (Ranap Total)',
         'Target EBITDA', 'Actual EBITDA',
-        'Actual Kunjungan Rajal', 'Actual Kunjungan Ranap'
+        'Volume Outpatient', 'Volume Inpatient'
     ]
 
     for year, s_name in sheets.items():
@@ -125,12 +118,16 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # Sinkronisasi penamaan kolom kunjungan
+            # --- FIX VARIABEL MAPPING BERDASARKAN SOURCE ASLI ANDA ---
             for col in df_tmp.columns:
-                if col in ['Actual Kunjungan (Rajal)', 'Kunjungan Rajal', 'Volume Rajal']:
-                    df_tmp.rename(columns={col: 'Actual Kunjungan Rajal'}, inplace=True)
-                if col in ['Actual Kunjungan (Ranap)', 'Kunjungan Ranap', 'Volume Ranap']:
-                    df_tmp.rename(columns={col: 'Actual Kunjungan Ranap'}, inplace=True)
+                if col in ['Actual Revenue (Rajal Total)', 'Revenue Rajal']:
+                    df_tmp.rename(columns={col: 'Actual Revenue (Rajal Total)'}, inplace=True)
+                if col in ['Actual Revenue (Ranap Total)', 'Revenue Ranap']:
+                    df_tmp.rename(columns={col: 'Actual Revenue (Ranap Total)'}, inplace=True)
+                if col in ['Kunjungan Rajal', 'Volume Rajal', 'Actual Kunjungan Rajal']:
+                    df_tmp.rename(columns={col: 'Volume Outpatient'}, inplace=True)
+                if col in ['Kunjungan Ranap', 'Volume Ranap', 'Actual Kunjungan Ranap']:
+                    df_tmp.rename(columns={col: 'Volume Inpatient'}, inplace=True)
 
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
@@ -149,14 +146,12 @@ def load_combined_data():
             continue
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
-# --- FUNGSI EXCEL EXPORTER ---
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Performance_Data')
     return output.getvalue()
 
-# --- MAIN DASHBOARD APP ---
 try:
     df_all = load_combined_data()
     quarter_order = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -179,24 +174,22 @@ try:
         layanan_opsi = ["Total", "Rawat Jalan (Rajal)", "Rawat Inap (Ranap)"]
         selected_layanan = st.sidebar.radio("Pilih Tipe Pelayanan", layanan_opsi, index=0)
 
-        # Pemetaan Sumbu Kolom
         if selected_layanan == "Rawat Jalan (Rajal)":
             target_rev_column = "Target Revenue (Rajal Total)"
             actual_rev_column = "Actual Revenue (Rajal Total)"
-            kunjungan_columns = ["Actual Kunjungan Rajal"]
+            kunjungan_columns = ["Volume Outpatient"]
             dashboard_title_suffix = " - Rawat Jalan (Rajal)"
         elif selected_layanan == "Rawat Inap (Ranap)":
             target_rev_column = "Target Revenue (Ranap Total)"
             actual_rev_column = "Actual Revenue (Ranap Total)"
-            kunjungan_columns = ["Actual Kunjungan Ranap"]
+            kunjungan_columns = ["Volume Inpatient"]
             dashboard_title_suffix = " - Rawat Inap (Ranap)"
         else:
             target_rev_column = "Target Revenue (Total)"
             actual_rev_column = "Actual Revenue (Total)"
-            kunjungan_columns = ["Actual Kunjungan Rajal", "Actual Kunjungan Ranap"]
+            kunjungan_columns = ["Volume Outpatient", "Volume Inpatient"]
             dashboard_title_suffix = ""
 
-        # Proses Filtering Data Dasar
         df_filtered = df_all[
             (df_all['Tahun'].isin(selected_tahun)) & 
             (df_all['Cabang'].isin(selected_cabang)) & 
@@ -222,7 +215,7 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                # SCRIPT BARU: Kalkulasi ARPP Utama 2026
+                # Kalkulasi Volume Menggunakan Kolom yang Benar
                 total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
                 arpp_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
@@ -341,22 +334,19 @@ try:
                 st.plotly_chart(fig_pie, use_container_width=True)
 
             # =====================================================================
-            # --- ROW 4: TABEL DETAIL DENGAN LOGIKA ARPP KONTINU ---
+            # --- ROW 4: TABEL DETAIL ---
             # =====================================================================
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
             df_table = df_filtered.copy()
             df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table[actual_rev_column] * 100).fillna(0)
-            
-            # Hitung total kunjungan gabungan baris per baris tabel untuk ARPP dinamis
             df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
             df_table['ARPP (Per Pasien)'] = (df_table[actual_rev_column] / df_table['Total Kunjungan']).fillna(0)
             
             df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', actual_rev_column, 'Actual EBITDA', 'EBITDA Margin %', 'Total Kunjungan', 'ARPP (Per Pasien)']].copy()
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
-            # FITUR EXPORT / DOWNLOAD BUTTONS
             col_btn1, col_btn2, _ = st.columns([1, 1, 4])
             with col_btn1:
                 excel_data = to_excel(df_display)
@@ -375,7 +365,6 @@ try:
                     mime="text/csv"
                 )
 
-            # Menampilkan Tabel di Dashboard
             st.dataframe(
                 df_display, 
                 use_container_width=True, 
