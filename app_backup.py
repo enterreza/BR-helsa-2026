@@ -111,13 +111,12 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Daftarkan semua kolom finansial dan kolom kunjungan baru agar diproses secara numerik
+    # Daftarkan semua kolom dimensi data baru agar ikut diproses secara numerik
     numeric_cols = [
         'Target Revenue (Total)', 'Actual Revenue (Total)',
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
         'Target Revenue (Ranap Total)', 'Actual Revenue (Ranap Total)',
-        'Target EBITDA', 'Actual EBITDA',
-        'Actual Kunjungan Rajal', 'Actual Kunjungan Ranap', 'Actual Kunjungan IGD'
+        'Target EBITDA', 'Actual EBITDA'
     ]
 
     for year, s_name in sheets.items():
@@ -125,16 +124,6 @@ def load_combined_data():
             url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={s_name}"
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
-            
-            # Pemetaan nama kolom alternatif jika di spreadsheet menggunakan format variatif
-            for col in df_tmp.columns:
-                if col in ['Actual Kunjungan (Rajal)', 'Kunjungan Rajal', 'Volume Rajal']:
-                    df_tmp.rename(columns={col: 'Actual Kunjungan Rajal'}, inplace=True)
-                if col in ['Actual Kunjungan (Ranap)', 'Kunjungan Ranap', 'Volume Ranap']:
-                    df_tmp.rename(columns={col: 'Actual Kunjungan Ranap'}, inplace=True)
-                if col in ['Actual Kunjungan (IGD)', 'Kunjungan IGD', 'Volume IGD']:
-                    df_tmp.rename(columns={col: 'Actual Kunjungan IGD'}, inplace=True)
-
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
             
@@ -168,6 +157,7 @@ try:
 
     st.sidebar.header("⚙️ Filter Panel")
     if not df_all.empty:
+        # 1. FILTER TAHUN DINAMIS
         list_tahun = sorted(df_all['Tahun'].unique(), reverse=True)
         selected_tahun = st.sidebar.multiselect("Pilih Tahun Analisis", list_tahun, default=list_tahun)
         
@@ -177,11 +167,13 @@ try:
         available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
         selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
+        # 2. SCRIPT BARU: PARAMETER FILTER LAYANAN (RAJAL / RANAP)
         st.sidebar.markdown("---")
         st.sidebar.subheader("🏥 Dimensi Pelayanan")
         layanan_opsi = ["Total", "Rawat Jalan (Rajal)", "Rawat Inap (Ranap)"]
         selected_layanan = st.sidebar.radio("Pilih Tipe Pelayanan", layanan_opsi, index=0)
 
+        # Pemetaan nama kolom target berdasarkan pilihan filter layanan
         if selected_layanan == "Rawat Jalan (Rajal)":
             target_rev_column = "Target Revenue (Rajal Total)"
             actual_rev_column = "Actual Revenue (Rajal Total)"
@@ -202,6 +194,7 @@ try:
             (df_all['Bulan'].isin(selected_bulan))
         ].copy()
 
+        # Data spesifik 2026 untuk KPI Card Utama
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))]
 
         st.title(f"🏥 Performance Dashboard Helsa Group{dashboard_title_suffix}")
@@ -209,7 +202,7 @@ try:
 
         if not df_filtered.empty:
             # =====================================================================
-            # --- ROW 1: KPI CARDS ---
+            # --- ROW 1: KPI CARDS WITH EBITDA MARGIN % ---
             # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026[actual_rev_column].sum()
@@ -219,6 +212,8 @@ try:
                 ebit_act_26 = df_2026['Actual EBITDA'].sum()
                 ebit_tar_26 = df_2026['Target EBITDA'].sum()
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
+                
+                # Perhitungan EBITDA Margin
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
                 col1, col2, col3 = st.columns(3)
@@ -241,8 +236,10 @@ try:
                 st.markdown("---")
 
             # =====================================================================
-            # --- ROW 2: TREN YOY FINANSIAL ---
+            # --- ROW 2: TREN YOY GRAPH (REVENUE & EBITDA GROWTH) ---
             # =====================================================================
+            
+            # 1. Grafik Kuartal
             st.subheader(f"📊 Analisis Tren & Growth YoY per Kuartal ({selected_layanan})")
             df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[[actual_rev_column, 'Actual EBITDA']].sum().reset_index()
             df_q_yoy['Kuartal'] = pd.Categorical(df_q_yoy['Kuartal'], categories=quarter_order, ordered=True)
@@ -259,6 +256,7 @@ try:
                     yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
                     fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
+            # Penambahan Indikator Growth YoY Kuartal
             if "2025" in selected_tahun and "2026" in selected_tahun:
                 for q in df_q_yoy['Kuartal'].unique():
                     rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
@@ -277,7 +275,7 @@ try:
             fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_q_comb, use_container_width=True)
 
-            # Grafik Bulanan Finansial
+            # 2. Grafik Bulanan
             st.subheader(f"📅 Analisis Tren & Growth YoY per Bulan ({selected_layanan})")
             df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[[actual_rev_column, 'Actual EBITDA']].sum().reset_index()
             df_m_yoy['Bulan'] = pd.Categorical(df_m_yoy['Bulan'], categories=month_order, ordered=True)
@@ -294,6 +292,7 @@ try:
                     yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
                     fig_m_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
+            # Penambahan Indikator Growth YoY Bulanan
             if "2025" in selected_tahun and "2026" in selected_tahun:
                 for b in selected_bulan:
                     rows = df_m_yoy[df_m_yoy['Bulan'] == b]
@@ -313,53 +312,38 @@ try:
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
             # =====================================================================
-            # --- SCRIPT BARU ROW 3: VISUALISASI AKTUAL KUNJUNGAN OPERASIONAL ---
+            # --- ROW 3: TREN PER RS (TAHUN TERBARU YANG DIPILIH) ---
             # =====================================================================
-            st.markdown("---")
-            st.subheader("📊 Tren Aktual Kunjungan Operasional (Rajal, Ranap, IGD)")
-            df_m_kunjungan = df_filtered.groupby(['Bulan', 'Tahun'])[['Actual Kunjungan Rajal', 'Actual Kunjungan Ranap', 'Actual Kunjungan IGD']].sum().reset_index()
-            df_m_kunjungan['Bulan'] = pd.Categorical(df_m_kunjungan['Bulan'], categories=month_order, ordered=True)
-            df_m_kunjungan = df_m_kunjungan.sort_values(['Bulan', 'Tahun'])
-
-            fig_kunj = go.Figure()
-            # Loop untuk tahun-tahun yang dipilih agar grafik dinamis
-            for yr in selected_tahun:
-                data_yr = df_m_kunjungan[df_m_kunjungan['Tahun'] == yr]
-                
-                # Gunakan Line + Markers untuk melacak volume kunjungan pasien tiga parameter utama
-                fig_kunj.add_trace(go.Scatter(x=data_yr['Bulan'], y=data_yr['Actual Kunjungan Rajal'], name=f"Rajal {yr}", mode='lines+markers', line=dict(width=2)))
-                fig_kunj.add_trace(go.Scatter(x=data_yr['Bulan'], y=data_yr['Actual Kunjungan Ranap'], name=f"Ranap {yr}", mode='lines+markers', line=dict(width=2)))
-                fig_kunj.add_trace(go.Scatter(x=data_yr['Bulan'], y=data_yr['Actual Kunjungan IGD'], name=f"IGD {yr}", mode='lines+markers', line=dict(width=2)))
-
-            fig_kunj.update_layout(yaxis_tickformat=',.0f', yaxis_title="Jumlah Pasien", template="plotly_white", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_kunj, use_container_width=True)
+            st.subheader(f"🏥 Tren Pencapaian per RS - {selected_layanan} (Filter Aktif)")
+            df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values=actual_rev_column, aggfunc='sum').reindex(month_order)
+            df_rs_target = df_filtered.pivot_table(index='Bulan', columns='Cabang', values=target_rev_column, aggfunc='sum').reindex(month_order)
+            
+            fig_line = go.Figure()
+            for rs in df_rs_actual.columns:
+                color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
+                fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
+                fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Tar {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
+            fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+            st.plotly_chart(fig_line, use_container_width=True)
 
             # =====================================================================
-            # --- ROW 4: TREN PER RS & KONTRIBUSI ---
+            # --- ROW 4: KOMPOSISI & EBITDA ---
             # =====================================================================
-            st.markdown("---")
             col_a, col_b = st.columns(2)
             with col_a:
-                st.subheader(f"🏥 Tren Pencapaian per RS - {selected_layanan}")
-                df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values=actual_rev_column, aggfunc='sum').reindex(month_order)
-                df_rs_target = df_filtered.pivot_table(index='Bulan', columns='Cabang', values=target_rev_column, aggfunc='sum').reindex(month_order)
-                
-                fig_line = go.Figure()
-                for rs in df_rs_actual.columns:
-                    color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
-                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
-                    fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Tar {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
-                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
-                st.plotly_chart(fig_line, use_container_width=True)
-                
-            with col_b:
                 st.subheader(f"📊 Komposisi Pendapatan per RS ({selected_layanan})")
                 fig_pie = px.pie(df_filtered, values=actual_rev_column, names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_pie.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
+            with col_b:
+                st.subheader("🎯 Pencapaian EBITDA per RS")
+                df_ebitda_rs = df_filtered.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
+                fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang', color_discrete_map=COLOR_MAP)
+                fig_ebitda.update_layout(yaxis_tickformat=',.0f', showlegend=False)
+                st.plotly_chart(fig_ebitda, use_container_width=True)
 
             # =====================================================================
-            # --- ROW 5: TABEL DETAIL DENGAN PARAMETER BARU ---
+            # --- ROW 5: TABEL DETAIL ---
             # =====================================================================
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
@@ -367,8 +351,8 @@ try:
             df_table = df_filtered.copy()
             df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table[actual_rev_column] * 100).fillna(0)
             
-            # Memasukkan data Aktual Kunjungan operasional ke dalam tabel detail dan sistem export
-            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', actual_rev_column, 'Actual EBITDA', 'EBITDA Margin %', 'Actual Kunjungan Rajal', 'Actual Kunjungan Ranap', 'Actual Kunjungan IGD']].copy()
+            # Buat representasi dinamis kolom di tabel berdasarkan filter
+            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', actual_rev_column, 'Actual EBITDA', 'EBITDA Margin %']].copy()
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
             # FITUR EXPORT / DOWNLOAD BUTTONS
@@ -390,17 +374,14 @@ try:
                     mime="text/csv"
                 )
 
-            # Menampilkan Tabel di Dashboard
+            # Menampilkan Tabel di Dashboard dengan kolom dinamis
             st.dataframe(
                 df_display, 
                 use_container_width=True, 
                 column_config={
-                    actual_rev_column: st.column_config.NumberColumn(f"Actual Revenue", format="%,.0f"), 
+                    actual_rev_column: st.column_config.NumberColumn(f"Actual Revenue ({selected_layanan})", format="%,.0f"), 
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
-                    "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
-                    "Actual Kunjungan Rajal": st.column_config.NumberColumn("Kunj. Rajal", format="%,.0f"),
-                    "Actual Kunjungan Ranap": st.column_config.NumberColumn("Kunj. Ranap", format="%,.0f"),
-                    "Actual Kunjungan IGD": st.column_config.NumberColumn("Kunj. IGD", format="%,.0f")
+                    "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%")
                 }
             )
 
