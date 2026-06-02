@@ -104,13 +104,14 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Standar kolom yang wajib diisi angka hasil kalkulasi script
+    # Memasukkan seluruh nama kolom eksak sesuai dengan struktur data source Anda
     numeric_cols = [
         'Target Revenue (Total)', 'Actual Revenue (Total)',
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
         'Target Revenue (Ranap Total)', 'Actual Revenue (Ranap Total)',
         'Target EBITDA', 'Actual EBITDA',
-        'Volume Outpatient', 'Volume Inpatient'
+        'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
+        'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
     ]
 
     for year, s_name in sheets.items():
@@ -119,21 +120,6 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # --- SUPER AGRESF MAPPING UNTUK KOLOM VOLUME KUNJUNGAN ---
-            for col in df_tmp.columns:
-                if col in ['Actual Revenue (Rajal Total)', 'Revenue Rajal']:
-                    df_tmp.rename(columns={col: 'Actual Revenue (Rajal Total)'}, inplace=True)
-                if col in ['Actual Revenue (Ranap Total)', 'Revenue Ranap']:
-                    df_tmp.rename(columns={col: 'Actual Revenue (Ranap Total)'}, inplace=True)
-                
-                # Mendeteksi segala bentuk variasi penamaan kolom Kunjungan Rajal
-                if col in ['Volume Outpatient', 'Kunjungan Rajal', 'Volume Rajal', 'Actual Kunjungan Rajal', 'Actual Kunjungan (Rajal)', 'Vol Rajal']:
-                    df_tmp.rename(columns={col: 'Volume Outpatient'}, inplace=True)
-                
-                # Mendeteksi segala bentuk variasi penamaan kolom Kunjungan Ranap
-                if col in ['Volume Inpatient', 'Kunjungan Ranap', 'Volume Ranap', 'Actual Kunjungan Ranap', 'Actual Kunjungan (Ranap)', 'Vol Ranap']:
-                    df_tmp.rename(columns={col: 'Volume Inpatient'}, inplace=True)
-
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
             
@@ -179,20 +165,24 @@ try:
         layanan_opsi = ["Total", "Rawat Jalan (Rajal)", "Rawat Inap (Ranap)"]
         selected_layanan = st.sidebar.radio("Pilih Tipe Pelayanan", layanan_opsi, index=0)
 
+        # Penentuan dinamis kolom kalkulasi volume berdasarkan tipe pelayanan aktif
         if selected_layanan == "Rawat Jalan (Rajal)":
             target_rev_column = "Target Revenue (Rajal Total)"
             actual_rev_column = "Actual Revenue (Rajal Total)"
-            kunjungan_columns = ["Volume Outpatient"]
+            kunjungan_columns = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)']
             dashboard_title_suffix = " - Rawat Jalan (Rajal)"
         elif selected_layanan == "Rawat Inap (Ranap)":
             target_rev_column = "Target Revenue (Ranap Total)"
             actual_rev_column = "Actual Revenue (Ranap Total)"
-            kunjungan_columns = ["Volume Inpatient"]
+            kunjungan_columns = ['Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
             dashboard_title_suffix = " - Rawat Inap (Ranap)"
         else:
             target_rev_column = "Target Revenue (Total)"
             actual_rev_column = "Actual Revenue (Total)"
-            kunjungan_columns = ["Volume Outpatient", "Volume Inpatient"]
+            kunjungan_columns = [
+                'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
+                'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
+            ]
             dashboard_title_suffix = ""
 
         df_filtered = df_all[
@@ -207,7 +197,9 @@ try:
         st.markdown("---")
 
         if not df_filtered.empty:
-            # --- ROW 1: KPI CARDS ---
+            # =====================================================================
+            # --- ROW 1: KPI CARDS WITH ARPP ---
+            # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026[actual_rev_column].sum()
                 rev_tar_26 = df_2026[target_rev_column].sum()
@@ -218,7 +210,7 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                # Kalkulasi total volume gabungan 
+                # Penjumlahan dinamis kolom kunjungan spesifik
                 total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
                 arpp_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
@@ -338,6 +330,8 @@ try:
             
             df_table = df_filtered.copy()
             df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table[actual_rev_column] * 100).fillna(0)
+            
+            # Hitung kolom total kunjungan baris per baris secara otomatis untuk tabel
             df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
             df_table['ARPP (Per Pasien)'] = (df_table[actual_rev_column] / df_table['Total Kunjungan']).fillna(0)
             
