@@ -104,6 +104,7 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
+    # Standar kolom yang wajib diisi angka hasil kalkulasi script
     numeric_cols = [
         'Target Revenue (Total)', 'Actual Revenue (Total)',
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
@@ -118,15 +119,19 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # --- FIX VARIABEL MAPPING BERDASARKAN SOURCE ASLI ANDA ---
+            # --- SUPER AGRESF MAPPING UNTUK KOLOM VOLUME KUNJUNGAN ---
             for col in df_tmp.columns:
                 if col in ['Actual Revenue (Rajal Total)', 'Revenue Rajal']:
                     df_tmp.rename(columns={col: 'Actual Revenue (Rajal Total)'}, inplace=True)
                 if col in ['Actual Revenue (Ranap Total)', 'Revenue Ranap']:
                     df_tmp.rename(columns={col: 'Actual Revenue (Ranap Total)'}, inplace=True)
-                if col in ['Kunjungan Rajal', 'Volume Rajal', 'Actual Kunjungan Rajal']:
+                
+                # Mendeteksi segala bentuk variasi penamaan kolom Kunjungan Rajal
+                if col in ['Volume Outpatient', 'Kunjungan Rajal', 'Volume Rajal', 'Actual Kunjungan Rajal', 'Actual Kunjungan (Rajal)', 'Vol Rajal']:
                     df_tmp.rename(columns={col: 'Volume Outpatient'}, inplace=True)
-                if col in ['Kunjungan Ranap', 'Volume Ranap', 'Actual Kunjungan Ranap']:
+                
+                # Mendeteksi segala bentuk variasi penamaan kolom Kunjungan Ranap
+                if col in ['Volume Inpatient', 'Kunjungan Ranap', 'Volume Ranap', 'Actual Kunjungan Ranap', 'Actual Kunjungan (Ranap)', 'Vol Ranap']:
                     df_tmp.rename(columns={col: 'Volume Inpatient'}, inplace=True)
 
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
@@ -202,9 +207,7 @@ try:
         st.markdown("---")
 
         if not df_filtered.empty:
-            # =====================================================================
-            # --- ROW 1: KPI CARDS WITH ARPP ---
-            # =====================================================================
+            # --- ROW 1: KPI CARDS ---
             if not df_2026.empty:
                 rev_act_26 = df_2026[actual_rev_column].sum()
                 rev_tar_26 = df_2026[target_rev_column].sum()
@@ -215,7 +218,7 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                # Kalkulasi Volume Menggunakan Kolom yang Benar
+                # Kalkulasi total volume gabungan 
                 total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
                 arpp_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
@@ -238,9 +241,7 @@ try:
 
                 st.markdown("---")
 
-            # =====================================================================
             # --- ROW 2: TREN YOY GRAPH ---
-            # =====================================================================
             st.subheader(f"📊 Analisis Tren & Growth YoY per Kuartal ({selected_layanan})")
             df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[[actual_rev_column, 'Actual EBITDA']].sum().reset_index()
             df_q_yoy['Kuartal'] = pd.Categorical(df_q_yoy['Kuartal'], categories=quarter_order, ordered=True)
@@ -310,9 +311,7 @@ try:
             fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
-            # =====================================================================
             # --- ROW 3: TREN PER RS & KONTRIBUSI ---
-            # =====================================================================
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader(f"🏥 Tren Pencapaian per RS - {selected_layanan}")
@@ -333,9 +332,7 @@ try:
                 fig_pie.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
 
-            # =====================================================================
             # --- ROW 4: TABEL DETAIL ---
-            # =====================================================================
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
