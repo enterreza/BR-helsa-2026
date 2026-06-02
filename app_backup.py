@@ -284,7 +284,7 @@ try:
                 with col3:
                     st.subheader("ARPP 2026")
                     st.write(f"### Rp {arpp_26:,.0f}")
-                    st.caption("Rata-rata pendapatan finansial per satu pasien")
+                    st.caption("Rata-rata pendapatan finansial per kunjungan pasien")
                     st.write(f"Total Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
 
                 st.markdown("---")
