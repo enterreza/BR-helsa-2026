@@ -49,17 +49,14 @@ if not st.session_state["logged_in"]:
 # --- 2. JIKA SUDAH LOGIN, TAMPILKAN SELURUH DASHBOARD DI BAWAH INI ---
 # =====================================================================
 
-# --- TOMBOL LOGOUT DI SIDEBAR ---
 if st.sidebar.button("🚪 Logout", use_container_width=True):
     st.session_state["logged_in"] = False
     st.rerun()
 
-# --- LOGO DI POJOK KIRI ATAS DASHBOARD ---
 LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
 
-# --- DEFINISI WARNA TETAP PER RS ---
 COLOR_MAP = {
     "Jatirahayu": "#636EFA", 
     "Cikampek": "#EF553B",   
@@ -68,7 +65,6 @@ COLOR_MAP = {
 }
 DEFAULT_COLORS = px.colors.qualitative.Plotly
 
-# --- FUNGSI FORMAT MATA UANG ---
 def format_rupiah_human(n):
     prefix = "-" if n < 0 else ""
     val = abs(n)
@@ -79,7 +75,6 @@ def format_rupiah_human(n):
     else:
         return f"{prefix}Rp {val:,.0f}"
 
-# --- FUNGSI PEMBERSIHAN DATA ---
 def clean_to_numeric(value):
     if pd.isna(value) or str(value).strip() == "":
         return 0.0
@@ -94,7 +89,6 @@ def clean_to_numeric(value):
     except ValueError:
         return 0.0
 
-# --- FUNGSI PEMETAAN KUARTAL ---
 def get_quarter(bulan):
     q_map = {
         'Januari': 'Q1', 'Februari': 'Q1', 'Maret': 'Q1',
@@ -104,19 +98,24 @@ def get_quarter(bulan):
     }
     return q_map.get(bulan, 'Unknown')
 
-# --- FUNGSI LOAD DATA ---
 @st.cache_data
 def load_combined_data():
     sheet_id = "1oqXKKPNnlMOSBhkWi9_7Isjo_NYtHE2ytfeO-bSNMxY"
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Daftarkan semua kolom dimensi data baru agar ikut diproses secara numerik
+    # Daftarkan semua breakdown kolom finansial pendapatan dan kunjungan dari spreadsheet Anda
     numeric_cols = [
         'Target Revenue (Total)', 'Actual Revenue (Total)',
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
+        'Target Revenue (Rajal JKN)', 'Actual Revenue (Rajal JKN)',
+        'Target Revenue (Rajal Non JKN)', 'Actual Revenue (Rajal Non JKN)',
         'Target Revenue (Ranap Total)', 'Actual Revenue (Ranap Total)',
-        'Target EBITDA', 'Actual EBITDA'
+        'Target Revenue (Ranap JKN)', 'Actual Revenue (Ranap JKN)',
+        'Target Revenue (Ranap Non JKN)', 'Actual Revenue (Ranap Non JKN)',
+        'Target EBITDA', 'Actual EBITDA',
+        'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
+        'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
     ]
 
     for year, s_name in sheets.items():
@@ -124,6 +123,7 @@ def load_combined_data():
             url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={s_name}"
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
+            
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
             
@@ -141,14 +141,12 @@ def load_combined_data():
             continue
     return pd.concat(combined_list, ignore_index=True) if combined_list else pd.DataFrame()
 
-# --- FUNGSI EXCEL EXPORTER ---
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Performance_Data')
     return output.getvalue()
 
-# --- MAIN DASHBOARD APP ---
 try:
     df_all = load_combined_data()
     quarter_order = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -157,7 +155,6 @@ try:
 
     st.sidebar.header("⚙️ Filter Panel")
     if not df_all.empty:
-        # 1. FILTER TAHUN DINAMIS
         list_tahun = sorted(df_all['Tahun'].unique(), reverse=True)
         selected_tahun = st.sidebar.multiselect("Pilih Tahun Analisis", list_tahun, default=list_tahun)
         
@@ -167,25 +164,68 @@ try:
         available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
         selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
-        # 2. SCRIPT BARU: PARAMETER FILTER LAYANAN (RAJAL / RANAP)
+        # 1. FILTER LAYANAN (RAJAL / RANAP)
         st.sidebar.markdown("---")
         st.sidebar.subheader("🏥 Dimensi Pelayanan")
         layanan_opsi = ["Total", "Rawat Jalan (Rajal)", "Rawat Inap (Ranap)"]
         selected_layanan = st.sidebar.radio("Pilih Tipe Pelayanan", layanan_opsi, index=0)
 
-        # Pemetaan nama kolom target berdasarkan pilihan filter layanan
+        # 2. SCRIPT BARU: FILTER SEGMEN PENJAMIN PASIEN (JKN / NON JKN)
+        st.sidebar.subheader("💳 Segmen Pasien")
+        segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
+        selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
+
+        # LOGIKA MATRIKS DINAMIS BERDASARKAN KOMBINASI DUA FILTER UTAMA
         if selected_layanan == "Rawat Jalan (Rajal)":
-            target_rev_column = "Target Revenue (Rajal Total)"
-            actual_rev_column = "Actual Revenue (Rajal Total)"
-            dashboard_title_suffix = " - Rawat Jalan (Rajal)"
+            if selected_segmen == "JKN":
+                target_rev_column = "Target Revenue (Rajal JKN)"
+                actual_rev_column = "Actual Revenue (Rajal JKN)"
+                kunjungan_columns = ['Aktual Kunjungan (Rajal JKN)']
+            elif selected_segmen == "Non JKN":
+                target_rev_column = "Target Revenue (Rajal Non JKN)"
+                actual_rev_column = "Actual Revenue (Rajal Non JKN)"
+                kunjungan_columns = ['Aktual Kunjungan (Rajal Non JKN)']
+            else:
+                target_rev_column = "Target Revenue (Rajal Total)"
+                actual_rev_column = "Actual Revenue (Rajal Total)"
+                kunjungan_columns = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)']
+        
         elif selected_layanan == "Rawat Inap (Ranap)":
-            target_rev_column = "Target Revenue (Ranap Total)"
-            actual_rev_column = "Actual Revenue (Ranap Total)"
-            dashboard_title_suffix = " - Rawat Inap (Ranap)"
-        else:
-            target_rev_column = "Target Revenue (Total)"
-            actual_rev_column = "Actual Revenue (Total)"
-            dashboard_title_suffix = ""
+            if selected_segmen == "JKN":
+                target_rev_column = "Target Revenue (Ranap JKN)"
+                actual_rev_column = "Actual Revenue (Ranap JKN)"
+                kunjungan_columns = ['Aktual Kunjungan (Ranap JKN)']
+            elif selected_segmen == "Non JKN":
+                target_rev_column = "Target Revenue (Ranap Non JKN)"
+                actual_rev_column = "Actual Revenue (Ranap Non JKN)"
+                kunjungan_columns = ['Aktual Kunjungan (Ranap Non JKN)']
+            else:
+                target_rev_column = "Target Revenue (Ranap Total)"
+                actual_rev_column = "Actual Revenue (Ranap Total)"
+                kunjungan_columns = ['Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
+        
+        else: # Tipe Pelayanan = Total
+            if selected_segmen == "JKN":
+                # Jika Layanan Total tapi segmen JKN, kita akumulasikan Rajal JKN + Ranap JKN secara manual di baris kalkulasi bawah
+                target_rev_column = ["Target Revenue (Rajal JKN)", "Target Revenue (Ranap JKN)"]
+                actual_rev_column = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
+                kunjungan_columns = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
+            elif selected_segmen == "Non JKN":
+                target_rev_column = ["Target Revenue (Rajal Non JKN)", "Target Revenue (Ranap Non JKN)"]
+                actual_rev_column = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
+                kunjungan_columns = ['Aktual Kunjungan (Rajal Non JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
+            else:
+                target_rev_column = "Target Revenue (Total)"
+                actual_rev_column = "Actual Revenue (Total)"
+                kunjungan_columns = [
+                    'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
+                    'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
+                ]
+
+        # Membuat suffix title dinamis agar user tahu filter apa yang sedang aktif
+        segmen_suffix = f" - {selected_segmen}" if selected_segmen != "Total Pasien" else ""
+        layanan_suffix = f" ({selected_layanan})" if selected_layanan != "Total" else ""
+        title_addon = f"{layanan_suffix}{segmen_suffix}"
 
         # Proses Filtering Data Dasar
         df_filtered = df_all[
@@ -194,54 +234,64 @@ try:
             (df_all['Bulan'].isin(selected_bulan))
         ].copy()
 
-        # Data spesifik 2026 untuk KPI Card Utama
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))]
 
-        st.title(f"🏥 Performance Dashboard Helsa Group{dashboard_title_suffix}")
+        st.title(f"🏥 Performance Dashboard Helsa Group{title_addon}")
         st.markdown("---")
 
         if not df_filtered.empty:
+            # Fungsi pembantu untuk menjumlahkan kolom pendapaatan baik berupa string tunggal maupun list
+            def sum_revenue(df_target):
+                if isinstance(actual_rev_column, list):
+                    return df_target[actual_rev_column].sum(axis=1)
+                return df_target[actual_rev_column]
+
+            def sum_target_revenue(df_target):
+                if isinstance(target_rev_column, list):
+                    return df_target[target_rev_column].sum(axis=1)
+                return df_target[target_rev_column]
+
+            # Mengaplikasikan penjumlahan dinamis untuk grafik & analisis
+            df_filtered['Calculated_Actual_Revenue'] = sum_revenue(df_filtered)
+
             # =====================================================================
-            # --- ROW 1: KPI CARDS WITH EBITDA MARGIN % ---
+            # --- ROW 1: KPI CARDS WITH ARPP ---
             # =====================================================================
             if not df_2026.empty:
-                rev_act_26 = df_2026[actual_rev_column].sum()
-                rev_tar_26 = df_2026[target_rev_column].sum()
+                rev_act_26 = sum_revenue(df_2026).sum()
+                rev_tar_26 = sum_target_revenue(df_2026).sum()
                 ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
                 
                 ebit_act_26 = df_2026['Actual EBITDA'].sum()
                 ebit_tar_26 = df_2026['Target EBITDA'].sum()
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
-                
-                # Perhitungan EBITDA Margin
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
+
+                total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
+                arpp_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.subheader(f"Revenue 2026 ({selected_layanan})")
+                    st.subheader("Revenue 2026")
                     st.write(f"### {format_rupiah_human(rev_act_26)}")
                     st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
                     st.write(f":green[{ach_rev:.1f}% vs Target]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target]")
                 with col2:
-                    st.subheader("Total EBITDA 2026")
-                    st.write(f"### {format_rupiah_human(ebit_act_26)}")
-                    st.caption(f"Target: {format_rupiah_human(ebit_tar_26)}")
+                    st.subheader("Total EBITDA & Margin")
+                    st.write(f"### {format_rupiah_human(ebit_act_26)} ({ebitda_margin_26:.1f}%)")
+                    st.caption(f"Target EBITDA: {format_rupiah_human(ebit_tar_26)}")
                     st.write(f":green[{ach_ebit:.1f}% vs Target]" if ach_ebit >= 100 else f":orange[{ach_ebit:.1f}% vs Target]")
                 with col3:
-                    st.subheader("EBITDA Margin % (2026)")
-                    st.write(f"### {ebitda_margin_26:.2f}%")
-                    st.caption("Rasio EBITDA terhadap Pendapatan Terpilih")
-                    st.write(":green[Sehat (>15%)]" if ebitda_margin_26 >= 15 else ":orange[Perlu Optimalisasi (<15%)]")
+                    st.subheader("ARPP 2026")
+                    st.write(f"### Rp {arpp_26:,.0f}")
+                    st.caption("Rata-rata pendapatan finansial per satu pasien")
+                    st.write(f"Total Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
 
                 st.markdown("---")
 
-            # =====================================================================
-            # --- ROW 2: TREN YOY GRAPH (REVENUE & EBITDA GROWTH) ---
-            # =====================================================================
-            
-            # 1. Grafik Kuartal
-            st.subheader(f"📊 Analisis Tren & Growth YoY per Kuartal ({selected_layanan})")
-            df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[[actual_rev_column, 'Actual EBITDA']].sum().reset_index()
+            # --- ROW 2: TREN YOY GRAPH ---
+            st.subheader("📊 Analisis Tren & Growth YoY per Kuartal")
+            df_q_yoy = df_filtered.groupby(['Kuartal', 'Tahun'])[['Calculated_Actual_Revenue', 'Actual EBITDA']].sum().reset_index()
             df_q_yoy['Kuartal'] = pd.Categorical(df_q_yoy['Kuartal'], categories=quarter_order, ordered=True)
             df_q_yoy = df_q_yoy.sort_values(['Kuartal', 'Tahun'])
             
@@ -249,19 +299,18 @@ try:
             for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
                 if yr in selected_tahun:
                     yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
-                    fig_q_comb.add_trace(go.Bar(x=yr_data['Kuartal'], y=yr_data[actual_rev_column], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
+                    fig_q_comb.add_trace(go.Bar(x=yr_data['Kuartal'], y=yr_data['Calculated_Actual_Revenue'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
             
             for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
                 if yr in selected_tahun:
                     yr_data = df_q_yoy[df_q_yoy['Tahun'] == yr]
                     fig_q_comb.add_trace(go.Scatter(x=yr_data['Kuartal'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            # Penambahan Indikator Growth YoY Kuartal
             if "2025" in selected_tahun and "2026" in selected_tahun:
                 for q in df_q_yoy['Kuartal'].unique():
                     rows = df_q_yoy[df_q_yoy['Kuartal'] == q]
-                    v26_r = rows[rows['Tahun'] == '2026'][actual_rev_column].sum()
-                    v25_r = rows[rows['Tahun'] == '2025'][actual_rev_column].sum()
+                    v26_r = rows[rows['Tahun'] == '2026']['Calculated_Actual_Revenue'].sum()
+                    v25_r = rows[rows['Tahun'] == '2025']['Calculated_Actual_Revenue'].sum()
                     if v26_r != 0 and v25_r != 0:
                         pct_r = ((v26_r - v25_r) / v25_r * 100)
                         fig_q_comb.add_annotation(x=q, y=v26_r, text=f"Growth Rev: {'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.1f}%", showarrow=False, yshift=15, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=10, family="Arial Bold"))
@@ -275,9 +324,9 @@ try:
             fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_q_comb, use_container_width=True)
 
-            # 2. Grafik Bulanan
-            st.subheader(f"📅 Analisis Tren & Growth YoY per Bulan ({selected_layanan})")
-            df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[[actual_rev_column, 'Actual EBITDA']].sum().reset_index()
+            # Grafik Bulanan Finansial
+            st.subheader("📅 Analisis Tren & Growth YoY per Bulan")
+            df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[['Calculated_Actual_Revenue', 'Actual EBITDA']].sum().reset_index()
             df_m_yoy['Bulan'] = pd.Categorical(df_m_yoy['Bulan'], categories=month_order, ordered=True)
             df_m_yoy = df_m_yoy.sort_values(['Bulan', 'Tahun'])
             
@@ -285,19 +334,18 @@ try:
             for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
                 if yr in selected_tahun:
                     yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
-                    fig_m_comb.add_trace(go.Bar(x=yr_data['Bulan'], y=yr_data[actual_rev_column], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
+                    fig_m_comb.add_trace(go.Bar(x=yr_data['Bulan'], y=yr_data['Calculated_Actual_Revenue'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
             
             for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
                 if yr in selected_tahun:
                     yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
                     fig_m_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
 
-            # Penambahan Indikator Growth YoY Bulanan
             if "2025" in selected_tahun and "2026" in selected_tahun:
                 for b in selected_bulan:
                     rows = df_m_yoy[df_m_yoy['Bulan'] == b]
-                    v26_r = rows[rows['Tahun'] == '2026'][actual_rev_column].sum()
-                    v25_r = rows[rows['Tahun'] == '2025'][actual_rev_column].sum()
+                    v26_r = rows[rows['Tahun'] == '2026']['Calculated_Actual_Revenue'].sum()
+                    v25_r = rows[rows['Tahun'] == '2025']['Calculated_Actual_Revenue'].sum()
                     if v26_r != 0 and v25_r != 0:
                         pct_r = ((v26_r - v25_r) / v25_r * 100)
                         fig_m_comb.add_annotation(x=b, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=9, family="Arial Bold"))
@@ -311,58 +359,45 @@ try:
             fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
-            # =====================================================================
-            # --- ROW 3: TREN PER RS (TAHUN TERBARU YANG DIPILIH) ---
-            # =====================================================================
-            st.subheader(f"🏥 Tren Pencapaian per RS - {selected_layanan} (Filter Aktif)")
-            df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values=actual_rev_column, aggfunc='sum').reindex(month_order)
-            df_rs_target = df_filtered.pivot_table(index='Bulan', columns='Cabang', values=target_rev_column, aggfunc='sum').reindex(month_order)
-            
-            fig_line = go.Figure()
-            for rs in df_rs_actual.columns:
-                color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
-                fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
-                fig_line.add_trace(go.Scatter(x=df_rs_target.index, y=df_rs_target[rs], name=f"Tar {rs}", mode='lines', line=dict(color=color, dash='dash', width=1.5), opacity=0.4))
-            fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
-            st.plotly_chart(fig_line, use_container_width=True)
-
-            # =====================================================================
-            # --- ROW 4: KOMPOSISI & EBITDA ---
-            # =====================================================================
+            # --- ROW 3: TREN PER RS & KONTRIBUSI ---
             col_a, col_b = st.columns(2)
             with col_a:
-                st.subheader(f"📊 Komposisi Pendapatan per RS ({selected_layanan})")
-                fig_pie = px.pie(df_filtered, values=actual_rev_column, names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
+                st.subheader("🏥 Tren Pencapaian per RS")
+                df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values='Calculated_Actual_Revenue', aggfunc='sum').reindex(month_order)
+                
+                fig_line = go.Figure()
+                for rs in df_rs_actual.columns:
+                    color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
+                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
+                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+                st.plotly_chart(fig_line, use_container_width=True)
+                
+            with col_b:
+                st.subheader("📊 Komposisi Pendapatan per RS")
+                fig_pie = px.pie(df_filtered, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_pie.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
-            with col_b:
-                st.subheader("🎯 Pencapaian EBITDA per RS")
-                df_ebitda_rs = df_filtered.groupby('Cabang')['Actual EBITDA'].sum().reset_index()
-                fig_ebitda = px.bar(df_ebitda_rs, x='Cabang', y='Actual EBITDA', color='Cabang', color_discrete_map=COLOR_MAP)
-                fig_ebitda.update_layout(yaxis_tickformat=',.0f', showlegend=False)
-                st.plotly_chart(fig_ebitda, use_container_width=True)
 
-            # =====================================================================
-            # --- ROW 5: TABEL DETAIL ---
-            # =====================================================================
+            # --- ROW 4: TABEL DETAIL ---
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
             df_table = df_filtered.copy()
-            df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table[actual_rev_column] * 100).fillna(0)
+            df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table['Calculated_Actual_Revenue'] * 100).fillna(0)
+            df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
+            df_table['ARPP (Per Pasien)'] = (df_table['Calculated_Actual_Revenue'] / df_table['Total Kunjungan']).fillna(0)
             
-            # Buat representasi dinamis kolom di tabel berdasarkan filter
-            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', actual_rev_column, 'Actual EBITDA', 'EBITDA Margin %']].copy()
+            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Actual EBITDA', 'EBITDA Margin %', 'Total Kunjungan', 'ARPP (Per Pasien)']].copy()
+            df_display.rename(columns={'Calculated_Actual_Revenue': 'Actual Revenue'}, inplace=True)
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
-            # FITUR EXPORT / DOWNLOAD BUTTONS
             col_btn1, col_btn2, _ = st.columns([1, 1, 4])
             with col_btn1:
                 excel_data = to_excel(df_display)
                 st.download_button(
                     label="🟢 Export to Excel",
                     data=excel_data,
-                    file_name=f"Performance_Report_Helsa_{selected_layanan}.xlsx",
+                    file_name=f"Performance_Report_Helsa.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             with col_btn2:
@@ -370,18 +405,19 @@ try:
                 st.download_button(
                     label="🔵 Export to CSV",
                     data=csv_data,
-                    file_name=f"Performance_Report_Helsa_{selected_layanan}.csv",
+                    file_name=f"Performance_Report_Helsa.csv",
                     mime="text/csv"
                 )
 
-            # Menampilkan Tabel di Dashboard dengan kolom dinamis
             st.dataframe(
                 df_display, 
                 use_container_width=True, 
                 column_config={
-                    actual_rev_column: st.column_config.NumberColumn(f"Actual Revenue ({selected_layanan})", format="%,.0f"), 
+                    "Actual Revenue": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
-                    "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%")
+                    "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
+                    "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
+                    "ARPP (Per Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
                 }
             )
 
