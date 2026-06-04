@@ -174,7 +174,6 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # LOGIKA MATRIKS DIKUNCI BERDASARKAN FILTER SELEKSI
         if selected_layanan == "Rawat Jalan (Rajal)":
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Rajal JKN)"
@@ -224,14 +223,12 @@ try:
         layanan_suffix = f" ({selected_layanan})" if selected_layanan != "Total" else ""
         title_addon = f"{layanan_suffix}{segmen_suffix}"
 
-        # Filter Data Terikat Variabel Dasar
         df_filtered = df_all[
             (df_all['Tahun'].isin(selected_tahun)) & 
             (df_all['Cabang'].isin(selected_cabang)) & 
             (df_all['Bulan'].isin(selected_bulan))
         ].copy()
 
-        # Pemetaan khusus data 2026
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
         st.title(f"🏥 Performance Dashboard Helsa Group{title_addon}")
@@ -250,7 +247,6 @@ try:
 
             df_filtered['Calculated_Actual_Revenue'] = sum_revenue(df_filtered)
             
-            # Buat kolom pendapatan kalkulasi khusus untuk tahun 2026 saja
             if not df_2026.empty:
                 df_2026['Calculated_Actual_Revenue'] = sum_revenue(df_2026)
 
@@ -366,7 +362,6 @@ try:
             with col_a:
                 st.subheader("🏥 Tren Pencapaian per RS (Khusus Tahun 2026)")
                 if not df_2026.empty:
-                    # Menggunakan df_2026 agar visualisasi garis murni membaca pergerakan tahun 2026 saja
                     df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Calculated_Actual_Revenue', aggfunc='sum').reindex(month_order)
                     
                     fig_line = go.Figure()
@@ -379,10 +374,19 @@ try:
                     st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Tren Pencapaian per RS.")
                 
             with col_b:
-                st.subheader("📊 Komposisi Pendapatan per RS (Filter Aktif)")
-                fig_pie = px.pie(df_filtered, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
-                fig_pie.update_traces(textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.subheader("📊 Komposisi Pendapatan per RS (Khusus Tahun 2026)")
+                if not df_2026.empty:
+                    # Menggunakan df_2026 agar pie chart murni mengunci data tahun 2026
+                    fig_pie = px.pie(df_2026, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
+                    
+                    # Mengubah hovertemplate agar menampilkan nominal rupiah dengan pemisah ribuan standar yang rapi
+                    fig_pie.update_traces(
+                        textinfo='percent+label',
+                        hovertemplate='<b>Cabang:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}'
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                else:
+                    st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Komposisi Pendapatan per RS.")
 
             # --- ROW 4: TABEL DETAIL ---
             st.markdown("---")
