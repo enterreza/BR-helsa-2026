@@ -104,7 +104,6 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Daftarkan semua breakdown kolom finansial pendapatan dan kunjungan dari spreadsheet Anda
     numeric_cols = [
         'Target Revenue (Total)', 'Actual Revenue (Total)',
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
@@ -164,18 +163,18 @@ try:
         available_months = [m for m in month_order if m in df_all['Bulan'].unique()]
         selected_bulan = st.sidebar.multiselect("Pilih Bulan", available_months, default=available_months)
 
-        # 1. FILTER LAYANAN (RAJAL / RANAP)
+        # 1. FILTER LAYANAN
         st.sidebar.markdown("---")
         st.sidebar.subheader("🏥 Dimensi Pelayanan")
         layanan_opsi = ["Total", "Rawat Jalan (Rajal)", "Rawat Inap (Ranap)"]
         selected_layanan = st.sidebar.radio("Pilih Tipe Pelayanan", layanan_opsi, index=0)
 
-        # 2. SCRIPT BARU: FILTER SEGMEN PENJAMIN PASIEN (JKN / NON JKN)
+        # 2. FILTER SEGMEN PASIEN
         st.sidebar.subheader("💳 Segmen Pasien")
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # LOGIKA MATRIKS DINAMIS BERDASARKAN KOMBINASI DUA FILTER UTAMA
+        # LOGIKA MATRIKS DIKUNCI BERDASARKAN FILTER SELEKSI
         if selected_layanan == "Rawat Jalan (Rajal)":
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Rajal JKN)"
@@ -204,9 +203,8 @@ try:
                 actual_rev_column = "Actual Revenue (Ranap Total)"
                 kunjungan_columns = ['Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
         
-        else: # Tipe Pelayanan = Total
+        else:
             if selected_segmen == "JKN":
-                # Jika Layanan Total tapi segmen JKN, kita akumulasikan Rajal JKN + Ranap JKN secara manual di baris kalkulasi bawah
                 target_rev_column = ["Target Revenue (Rajal JKN)", "Target Revenue (Ranap JKN)"]
                 actual_rev_column = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
                 kunjungan_columns = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
@@ -222,25 +220,24 @@ try:
                     'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
                 ]
 
-        # Membuat suffix title dinamis agar user tahu filter apa yang sedang aktif
         segmen_suffix = f" - {selected_segmen}" if selected_segmen != "Total Pasien" else ""
         layanan_suffix = f" ({selected_layanan})" if selected_layanan != "Total" else ""
         title_addon = f"{layanan_suffix}{segmen_suffix}"
 
-        # Proses Filtering Data Dasar
+        # Filter Data Terikat Variabel Dasar
         df_filtered = df_all[
             (df_all['Tahun'].isin(selected_tahun)) & 
             (df_all['Cabang'].isin(selected_cabang)) & 
             (df_all['Bulan'].isin(selected_bulan))
         ].copy()
 
-        df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))]
+        # Pemetaan khusus data 2026
+        df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
         st.title(f"🏥 Performance Dashboard Helsa Group{title_addon}")
         st.markdown("---")
 
         if not df_filtered.empty:
-            # Fungsi pembantu untuk menjumlahkan kolom pendapaatan baik berupa string tunggal maupun list
             def sum_revenue(df_target):
                 if isinstance(actual_rev_column, list):
                     return df_target[actual_rev_column].sum(axis=1)
@@ -251,8 +248,11 @@ try:
                     return df_target[target_rev_column].sum(axis=1)
                 return df_target[target_rev_column]
 
-            # Mengaplikasikan penjumlahan dinamis untuk grafik & analisis
             df_filtered['Calculated_Actual_Revenue'] = sum_revenue(df_filtered)
+            
+            # Buat kolom pendapatan kalkulasi khusus untuk tahun 2026 saja
+            if not df_2026.empty:
+                df_2026['Calculated_Actual_Revenue'] = sum_revenue(df_2026)
 
             # =====================================================================
             # --- ROW 1: KPI CARDS WITH ARPP ---
@@ -284,7 +284,7 @@ try:
                 with col3:
                     st.subheader("ARPP 2026")
                     st.write(f"### Rp {arpp_26:,.0f}")
-                    st.caption("Rata-rata pendapatan finansial per kunjungan pasien")
+                    st.caption("Rata-rata pendapatan finansial per satu pasien")
                     st.write(f"Total Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
 
                 st.markdown("---")
@@ -359,21 +359,27 @@ try:
             fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
-            # --- ROW 3: TREN PER RS & KONTRIBUSI ---
+            # =====================================================================
+            # --- ROW 3: TREN PER RS & KONTRIBUSI (KUNCI TAHUN 2026) ---
+            # =====================================================================
             col_a, col_b = st.columns(2)
             with col_a:
-                st.subheader("🏥 Tren Pencapaian per RS")
-                df_rs_actual = df_filtered.pivot_table(index='Bulan', columns='Cabang', values='Calculated_Actual_Revenue', aggfunc='sum').reindex(month_order)
-                
-                fig_line = go.Figure()
-                for rs in df_rs_actual.columns:
-                    color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
-                    fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
-                fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
-                st.plotly_chart(fig_line, use_container_width=True)
+                st.subheader("🏥 Tren Pencapaian per RS (Khusus Tahun 2026)")
+                if not df_2026.empty:
+                    # Menggunakan df_2026 agar visualisasi garis murni membaca pergerakan tahun 2026 saja
+                    df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Calculated_Actual_Revenue', aggfunc='sum').reindex(month_order)
+                    
+                    fig_line = go.Figure()
+                    for rs in df_rs_actual.columns:
+                        color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
+                        fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
+                    fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+                    st.plotly_chart(fig_line, use_container_width=True)
+                else:
+                    st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Tren Pencapaian per RS.")
                 
             with col_b:
-                st.subheader("📊 Komposisi Pendapatan per RS")
+                st.subheader("📊 Komposisi Pendapatan per RS (Filter Aktif)")
                 fig_pie = px.pie(df_filtered, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
                 fig_pie.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
@@ -397,7 +403,7 @@ try:
                 st.download_button(
                     label="🟢 Export to Excel",
                     data=excel_data,
-                    file_name=f"Performance_Report_Helsa.xlsx",
+                    file_name="Performance_Report_Helsa.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             with col_btn2:
@@ -405,7 +411,7 @@ try:
                 st.download_button(
                     label="🔵 Export to CSV",
                     data=csv_data,
-                    file_name=f"Performance_Report_Helsa.csv",
+                    file_name="Performance_Report_Helsa.csv",
                     mime="text/csv"
                 )
 
