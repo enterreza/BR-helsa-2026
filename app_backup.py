@@ -294,7 +294,7 @@ try:
 
         if not df_filtered.empty:
             # =====================================================================
-            # --- ROW 1: KPI CARDS ---
+            # --- ROW 1: KPI CARDS (TATA LETAK STRUKTUR 4 KOLOM UTAMA) ---
             # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
@@ -316,6 +316,7 @@ try:
                 
                 arpp_aktual_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
+                # Pembuatan struktur 4 Kolom KPI Sejajar
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.subheader("Revenue 2026")
@@ -323,10 +324,9 @@ try:
                     st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
                     st.write(f":green[{ach_rev:.1f}% vs Target]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target]")
                 with col2:
-                    # --- MENAMBAHKAN INDIKATOR VS TARGET PADA EBITDA ---
                     st.subheader("Total EBITDA & Margin")
-                    st.write(f"### {format_rupiah_human(ebit_act_26)}")
-                    st.caption(f"Target EBITDA: {format_rupiah_human(ebit_tar_26)} ({ebitda_margin_26:.1f}% Margin)")
+                    st.write(f"### {format_rupiah_human(ebit_act_26)} ({ebitda_margin_26:.1f}%)")
+                    st.caption(f"Target EBITDA: {format_rupiah_human(ebit_tar_26)}")
                     st.write(f":green[{ach_ebit:.1f}% vs Target]" if ach_ebit >= 100 else f":orange[{ach_ebit:.1f}% vs Target]")
                 with col3:
                     st.subheader("ARPP Aktual 2026")
