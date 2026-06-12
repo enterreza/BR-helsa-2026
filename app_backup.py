@@ -174,6 +174,7 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
+        # Matriks Penentuan Nama Kolom Berdasarkan Filter Penjamin Utama
         if selected_layanan == "Rawat Jalan (Rajal)":
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Rajal JKN)"
@@ -356,8 +357,36 @@ try:
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
             # =====================================================================
-            # --- ROW 3: TREN PER RS & KONTRIBUSI (KUNCI TAHUN 2026) ---
+            # --- SCRIPT BARU ROW 3: STACKED BAR CHART KOMPOSISI JKN VS NON JKN (2026) ---
             # =====================================================================
+            st.markdown("---")
+            st.subheader("📊 Tren Komposisi Pendapatan Segmen Pasien: JKN vs Non JKN (Khusus Tahun 2026)")
+            if not df_2026.empty:
+                # Akumulasikan pendapatan JKN & Non JKN secara detail per bulan
+                df_2026['Revenue_JKN'] = df_2026['Actual Revenue (Rajal JKN)'] + df_2026['Actual Revenue (Ranap JKN)']
+                df_2026['Revenue_Non_JKN'] = df_2026['Actual Revenue (Rajal Non JKN)'] + df_2026['Actual Revenue (Ranap Non JKN)']
+                
+                df_segmen_m = df_2026.groupby('Bulan')[['Revenue_JKN', 'Revenue_Non_JKN']].sum().reset_index()
+                df_segmen_m['Bulan'] = pd.Categorical(df_segmen_m['Bulan'], categories=month_order, ordered=True)
+                df_segmen_m = df_segmen_m.sort_values('Bulan')
+
+                fig_stack = go.Figure()
+                fig_stack.add_trace(go.Bar(x=df_segmen_m['Bulan'], y=df_segmen_m['Revenue_JKN'], name="Segmen JKN", marker_color="#2ECC71"))
+                fig_stack.add_trace(go.Bar(x=df_segmen_m['Bulan'], y=df_segmen_m['Revenue_Non_JKN'], name="Segmen Non JKN", marker_color="#E74C3C"))
+
+                fig_stack.update_layout(
+                    barmode='stack', yaxis_tickformat=',.0f', template="plotly_white",
+                    hovermode="x unified", yaxis_title="Nilai Pendapatan (Rp)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_stack, use_container_width=True)
+            else:
+                st.info("ℹ️ Silakan pastikan tahun '2026' dipilih untuk melihat tren komposisi segmen penjamin.")
+
+            # =====================================================================
+            # --- ROW 4: TREN PER RS & KONTRIBUSI (KUNCI TAHUN 2026) ---
+            # =====================================================================
+            st.markdown("---")
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("🏥 Tren Pencapaian per RS (Khusus Tahun 2026)")
@@ -376,10 +405,7 @@ try:
             with col_b:
                 st.subheader("📊 Komposisi Pendapatan per RS (Khusus Tahun 2026)")
                 if not df_2026.empty:
-                    # Menggunakan df_2026 agar pie chart murni mengunci data tahun 2026
                     fig_pie = px.pie(df_2026, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
-                    
-                    # Mengubah hovertemplate agar menampilkan nominal rupiah dengan pemisah ribuan standar yang rapi
                     fig_pie.update_traces(
                         textinfo='percent+label',
                         hovertemplate='<b>Cabang:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}'
@@ -388,7 +414,7 @@ try:
                 else:
                     st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Komposisi Pendapatan per RS.")
 
-            # --- ROW 4: TABEL DETAIL ---
+            # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
