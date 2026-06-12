@@ -176,7 +176,7 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # MAPPING KOLOM HARUS MENGACU PADA STRUKTUR ASLI DATASET ANDA
+        # --- LOGIKA PEMETAAN KOLOM DATASET UTK KPI & GRAFIK TREN ---
         if selected_layanan == "Rawat Jalan (Rajal)":
             jkn_rev_source = "Actual Revenue (Rajal JKN)"
             non_jkn_rev_source = "Actual Revenue (Rajal Non JKN)"
@@ -211,7 +211,7 @@ try:
                 target_rev_column = "Target Revenue (Ranap Total)"
                 actual_rev_column = "Actual Revenue (Ranap Total)"
         
-        else: # TOTAL (Kembali membaca kolom Total asli dari spreadsheet Anda)
+        else: # TOTAL (Kembali mengunci kolom Total murni dari file Excel Anda)
             jkn_rev_source = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
             non_jkn_rev_source = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
@@ -243,27 +243,36 @@ try:
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
         # =====================================================================
-        # --- PROSES UTAMA KALKULASI LOGIKA BARIS ---
+        # --- PROSES INTEGRASI KALKULASI LOGIKA BARIS ---
         # =====================================================================
         def apply_row_logic(df_target):
             if df_target.empty:
                 return df_target
             
-            df_target['Calculated_Actual_Revenue'] = sum_revenue_dynamic(df_target, actual_rev_column)
-            df_target['Calculated_JKN_Revenue'] = sum_revenue_dynamic(df_target, jkn_rev_source)
-            df_target['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_target, non_jkn_rev_source)
-            df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
-            
-            df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
-            
-            av_cols = [c for c in target_kunj_cols if c in df_target.columns]
-            df_target['Total_Target_Kunjungan_Row'] = df_target[av_cols].sum(axis=1) if av_cols else 0
-            
+            # 1. Pastikan Nilai Finansial murni ditarik sesuai kolom seleksi dropdown
+            if isinstance(actual_rev_column, list):
+                df_target['Calculated_Actual_Revenue'] = df_target[actual_rev_column].sum(axis=1)
+            else:
+                df_target['Calculated_Actual_Revenue'] = df_target[actual_rev_column]
+
             if isinstance(target_rev_column, list):
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column].sum(axis=1)
             else:
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
+
+            # Breakdown pembantu khusus visualisasi Pie Chart JKN vs Non-JKN
+            def sum_cols_safe(df_obj, cols):
+                if isinstance(cols, list): return df_obj[cols].sum(axis=1)
+                return df_obj[cols]
                 
+            df_target['Calculated_JKN_Revenue'] = sum_cols_safe(df_target, jkn_rev_source)
+            df_target['Calculated_Non_JKN_Revenue'] = sum_cols_safe(df_target, non_jkn_rev_source)
+            
+            df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
+            df_target['Total_Target_Kunjungan_Row'] = df_target[[c for c in target_kunj_cols if c in df_target.columns]].sum(axis=1)
+            df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
+            
+            # 2. Rumus Pendapatan Potensial Bersih (Mengunci Periode Berjalan)
             def process_single_row(row):
                 if row['Total_Kunjungan_Row'] == 0:
                     return 0.0
@@ -281,11 +290,6 @@ try:
             df_target['Pendapatan_Potensial_Row'] = df_target.apply(process_single_row, axis=1)
             return df_target
 
-        def sum_revenue_dynamic(df_target, col_source):
-            if isinstance(col_source, list):
-                return df_target[col_source].sum(axis=1)
-            return df_target[col_source]
-
         df_filtered = apply_row_logic(df_filtered)
         if not df_2026.empty:
             df_2026 = apply_row_logic(df_2026)
@@ -295,14 +299,11 @@ try:
 
         if not df_filtered.empty:
             # =====================================================================
-            # --- ROW 1: KPI CARDS ---
+            # --- ROW 1: KPI CARDS SEJAJAR 4 KOLOM ---
             # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
-                if isinstance(target_rev_column, list):
-                    rev_tar_26 = df_2026[target_rev_column].sum().sum()
-                else:
-                    rev_tar_26 = df_2026[target_rev_column].sum()
+                rev_tar_26 = df_2026['Target_Rev_Sum_Row'].sum()
                     
                 ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
                 
