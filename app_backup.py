@@ -242,7 +242,7 @@ try:
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
         # =====================================================================
-        # --- PROSES UTAMA KALKULASI DUA DATAFRAME AGAR MATRIKS VALID UNTUK KPI ---
+        # --- PROSES UTAMA KALKULASI LOGIKA BARIS ---
         # =====================================================================
         def apply_row_logic(df_target):
             if df_target.empty:
@@ -253,6 +253,9 @@ try:
             df_target['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_target, non_jkn_rev_source)
             df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
             
+            # Tambahan: Perhitungan EBITDA Margin per baris di sini agar tidak memicu error index
+            df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
+            
             av_cols = [c for c in target_kunj_cols if c in df_target.columns]
             df_target['Total_Target_Kunjungan_Row'] = df_target[av_cols].sum(axis=1) if av_cols else 0
             
@@ -261,21 +264,15 @@ try:
             else:
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
                 
-            # Logika Utama Row-per-Row
             def process_single_row(row):
-                # JIKA KUNJUNGAN AKTUAL MASIH KOSONG, PERIODE BELUM JALAN -> POTENSIAL = 0
                 if row['Total_Kunjungan_Row'] == 0:
                     return 0.0
-                
                 arpp_act = row['Calculated_Actual_Revenue'] / row['Total_Kunjungan_Row']
-                
-                # Menentukan ARPP Target
                 if row['Total_Target_Kunjungan_Row'] > 0:
                     arpp_tar = row['Target_Rev_Sum_Row'] / row['Total_Target_Kunjungan_Row']
                 else:
                     arpp_tar = arpp_act
                     
-                # Bandingkan ARPP
                 if arpp_act < arpp_tar:
                     return row['Total_Kunjungan_Row'] * arpp_tar
                 else:
@@ -289,7 +286,6 @@ try:
                 return df_target[col_source].sum(axis=1)
             return df_target[col_source]
 
-        # Jalankan kalkulasi logika baris demi baris pada kedua dataframe
         df_filtered = apply_row_logic(df_filtered)
         if not df_2026.empty:
             df_2026 = apply_row_logic(df_2026)
@@ -315,7 +311,6 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                # Penjumlahan volume & nilai potensial dari baris yang sudah diproses secara benar
                 total_kunjungan_26 = df_2026['Total_Kunjungan_Row'].sum()
                 rev_potensial_26 = df_2026['Pendapatan_Potensial_Row'].sum()
                 loss_revenue = max(0.0, rev_potensial_26 - rev_act_26)
@@ -475,7 +470,6 @@ try:
                 'Total_Kunjungan_Row': 'Total Kunjungan'
             }, inplace=True)
             
-            # Hitung ARPP baris tabel hasil filter final
             df_display['ARPP (Pasien)'] = (df_display['Actual Revenue'] / df_display['Total Kunjungan']).fillna(0)
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
