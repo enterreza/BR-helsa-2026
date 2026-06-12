@@ -241,24 +241,63 @@ try:
 
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
+        # =====================================================================
+        # --- PROSES UTAMA KALKULASI DUA DATAFRAME AGAR MATRIKS VALID UNTUK KPI ---
+        # =====================================================================
+        def apply_row_logic(df_target):
+            if df_target.empty:
+                return df_target
+            
+            df_target['Calculated_Actual_Revenue'] = sum_revenue_dynamic(df_target, actual_rev_column)
+            df_target['Calculated_JKN_Revenue'] = sum_revenue_dynamic(df_target, jkn_rev_source)
+            df_target['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_target, non_jkn_rev_source)
+            df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
+            
+            av_cols = [c for c in target_kunj_cols if c in df_target.columns]
+            df_target['Total_Target_Kunjungan_Row'] = df_target[av_cols].sum(axis=1) if av_cols else 0
+            
+            if isinstance(target_rev_column, list):
+                df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column].sum(axis=1)
+            else:
+                df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
+                
+            # Logika Utama Row-per-Row
+            def process_single_row(row):
+                # JIKA KUNJUNGAN AKTUAL MASIH KOSONG, PERIODE BELUM JALAN -> POTENSIAL = 0
+                if row['Total_Kunjungan_Row'] == 0:
+                    return 0.0
+                
+                arpp_act = row['Calculated_Actual_Revenue'] / row['Total_Kunjungan_Row']
+                
+                # Menentukan ARPP Target
+                if row['Total_Target_Kunjungan_Row'] > 0:
+                    arpp_tar = row['Target_Rev_Sum_Row'] / row['Total_Target_Kunjungan_Row']
+                else:
+                    arpp_tar = arpp_act
+                    
+                # Bandingkan ARPP
+                if arpp_act < arpp_tar:
+                    return row['Total_Kunjungan_Row'] * arpp_tar
+                else:
+                    return row['Calculated_Actual_Revenue']
+
+            df_target['Pendapatan_Potensial_Row'] = df_target.apply(process_single_row, axis=1)
+            return df_target
+
+        def sum_revenue_dynamic(df_target, col_source):
+            if isinstance(col_source, list):
+                return df_target[col_source].sum(axis=1)
+            return df_target[col_source]
+
+        # Jalankan kalkulasi logika baris demi baris pada kedua dataframe
+        df_filtered = apply_row_logic(df_filtered)
+        if not df_2026.empty:
+            df_2026 = apply_row_logic(df_2026)
+
         st.title(f"🏥 Performance Dashboard Helsa Group{title_addon}")
         st.markdown("---")
 
         if not df_filtered.empty:
-            def sum_revenue_dynamic(df_target, col_source):
-                if isinstance(col_source, list):
-                    return df_target[col_source].sum(axis=1)
-                return df_target[col_source]
-
-            df_filtered['Calculated_Actual_Revenue'] = sum_revenue_dynamic(df_filtered, actual_rev_column)
-            df_filtered['Calculated_JKN_Revenue'] = sum_revenue_dynamic(df_filtered, jkn_rev_source)
-            df_filtered['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_filtered, non_jkn_rev_source)
-            
-            if not df_2026.empty:
-                df_2026['Calculated_Actual_Revenue'] = sum_revenue_dynamic(df_2026, actual_rev_column)
-                df_2026['Calculated_JKN_Revenue'] = sum_revenue_dynamic(df_2026, jkn_rev_source)
-                df_2026['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_2026, non_jkn_rev_source)
-
             # =====================================================================
             # --- ROW 1: KPI CARDS WITH ARPP & POTENTIAL REVENUE ---
             # =====================================================================
@@ -276,27 +315,12 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                # 1. Volume & ARPP Aktual 2026
-                total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
-                arpp_aktual_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
-
-                # 2. Volume Target & ARPP Target 2026
-                available_target_cols = [c for c in target_kunj_cols if c in df_2026.columns]
-                total_target_kunjungan_26 = df_2026[available_target_cols].sum().sum() if available_target_cols else 0
+                # Penjumlahan volume & nilai potensial dari baris yang sudah diproses secara benar
+                total_kunjungan_26 = df_2026['Total_Kunjungan_Row'].sum()
+                rev_potensial_26 = df_2026['Pendapatan_Potensial_Row'].sum()
+                loss_revenue = max(0.0, rev_potensial_26 - rev_act_26)
                 
-                # JIKA TARGET KOSONG / BELUM MASUK PERIODENYA, ARPP TARGET = ARPP AKTUAL
-                if total_target_kunjungan_26 > 0:
-                    arpp_target_26 = rev_tar_26 / total_target_kunjungan_26
-                else:
-                    arpp_target_26 = arpp_aktual_26
-
-                # 3. KALKULASI LOGIKA REVENUE POTENSIAL (MURNI TANPA FALLBACK ESTIMASI)
-                if arpp_aktual_26 < arpp_target_26:
-                    rev_potensial_26 = total_kunjungan_26 * arpp_target_26
-                    loss_revenue = rev_potensial_26 - rev_act_26
-                else:
-                    rev_potensial_26 = rev_act_26
-                    loss_revenue = 0.0
+                arpp_aktual_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -306,7 +330,7 @@ try:
                 with col2:
                     st.subheader("ARPP Analysis (Per Pasien)")
                     st.write(f"**ARPP Aktual:** Rp {arpp_aktual_26:,.0f}")
-                    st.write(f"**ARPP Target:** Rp {arpp_target_26:,.0f}")
+                    st.write(f"**Total Volume:** {total_kunjungan_26:,.0f} Kunjungan Pasien")
                 with col3:
                     st.subheader("Pendapatan Potensial 2026")
                     st.write(f"### {format_rupiah_human(rev_potensial_26)}")
@@ -440,40 +464,19 @@ try:
             else:
                 st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk memuat Diagram Komposisi JKN vs Non JKN.")
 
-            # --- ROW 5: TABEL DETAIL DENGAN INDIKATOR REVENUE POTENSIAL MURNI ---
+            # --- ROW 5: TABEL DETAIL ---
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
-            df_table = df_filtered.copy()
-            df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table['Calculated_Actual_Revenue'] * 100).fillna(0)
-            df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
+            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Pendapatan_Potensial_Row', 'Actual EBITDA', 'EBITDA Margin %', 'Total_Kunjungan_Row']].copy()
+            df_display.rename(columns={
+                'Calculated_Actual_Revenue': 'Actual Revenue',
+                'Pendapatan_Potensial_Row': 'Pendapatan Potensial',
+                'Total_Kunjungan_Row': 'Total Kunjungan'
+            }, inplace=True)
             
-            # Formulasi Kolom Target Kunjungan Row-per-Row
-            av_cols = [c for c in target_kunj_cols if c in df_table.columns]
-            df_table['Total Target Kunjungan'] = df_table[av_cols].sum(axis=1) if av_cols else 0
-            
-            # Kalkulasi ARPP Aktual
-            df_table['ARPP (Aktual)'] = (df_table['Calculated_Actual_Revenue'] / df_table['Total Kunjungan']).fillna(0)
-            
-            if isinstance(target_rev_column, list):
-                df_table['Target_Rev_Sum'] = df_table[target_rev_column].sum(axis=1)
-            else:
-                df_table['Target_Rev_Sum'] = df_table[target_rev_column]
-                
-            # JIKA TARGET KUNJUNGAN PER BARIS ADALAH 0, COPIED LANGSUNG DARI ARPP AKTUALNYA (PENGUNCI CLEAN DATA)
-            df_table['ARPP (Target)'] = (df_table['Target_Rev_Sum'] / df_table['Total Target Kunjungan']).fillna(df_table['ARPP (Aktual)'])
-            df_table['ARPP (Target)'] = df_table.apply(lambda r: r['ARPP (Aktual)'] if r['Total Target Kunjungan'] == 0 else r['ARPP (Target)'], axis=1)
-            
-            # Penerapan Aturan Potensial
-            def calc_row_potential_clean(row):
-                if row['ARPP (Aktual)'] < row['ARPP (Target)']:
-                    return row['Total Kunjungan'] * row['ARPP (Target)']
-                return row['Calculated_Actual_Revenue']
-                
-            df_table['Pendapatan Potensial'] = df_table.apply(calc_row_potential_clean, axis=1)
-
-            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Pendapatan Potensial', 'Actual EBITDA', 'EBITDA Margin %', 'Total Kunjungan', 'ARPP (Aktual)']].copy()
-            df_display.rename(columns={'Calculated_Actual_Revenue': 'Actual Revenue'}, inplace=True)
+            # Hitung ARPP baris tabel hasil filter final
+            df_display['ARPP (Pasien)'] = (df_display['Actual Revenue'] / df_display['Total Kunjungan']).fillna(0)
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
             col_btn1, col_btn2, _ = st.columns([1, 1, 4])
@@ -493,7 +496,7 @@ try:
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
                     "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
                     "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
-                    "ARPP (Aktual)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
+                    "ARPP (Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
                 }
             )
 
