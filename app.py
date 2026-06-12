@@ -114,7 +114,9 @@ def load_combined_data():
         'Target Revenue (Ranap Non JKN)', 'Actual Revenue (Ranap Non JKN)',
         'Target EBITDA', 'Actual EBITDA',
         'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
-        'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
+        'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)',
+        'Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)',
+        'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)'
     ]
 
     for year, s_name in sheets.items():
@@ -174,12 +176,13 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # LOGIKA MATRIKS PARALEL FILTERING
+        # --- LOGIKA PEMETAAN KOLOM DATASET UTK KPI & GRAFIK TREN ---
         if selected_layanan == "Rawat Jalan (Rajal)":
             jkn_rev_source = "Actual Revenue (Rajal JKN)"
             non_jkn_rev_source = "Actual Revenue (Rajal Non JKN)"
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Rajal Non JKN)']
+            target_kunj_cols = ['Target Kunjungan (Rajal JKN)'] if selected_segmen == "JKN" else (['Target Kunjungan (Rajal Non JKN)'] if selected_segmen == "Non JKN" else ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)'])
             
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Rajal JKN)"
@@ -196,6 +199,7 @@ try:
             non_jkn_rev_source = "Actual Revenue (Ranap Non JKN)"
             jkn_kunj_cols = ['Aktual Kunjungan (Ranap JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Ranap Non JKN)']
+            target_kunj_cols = ['Target Kunjungan (Ranap JKN)'] if selected_segmen == "JKN" else (['Target Kunjungan (Ranap Non JKN)'] if selected_segmen == "Non JKN" else ['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)'])
             
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Ranap JKN)"
@@ -207,11 +211,12 @@ try:
                 target_rev_column = "Target Revenue (Ranap Total)"
                 actual_rev_column = "Actual Revenue (Ranap Total)"
         
-        else: # Total
+        else: # TOTAL (Kembali mengunci kolom Total murni dari file Excel Anda)
             jkn_rev_source = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
             non_jkn_rev_source = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Rajal Non JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
+            target_kunj_cols = ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)', 'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']
             
             if selected_segmen == "JKN":
                 target_rev_column = ["Target Revenue (Rajal JKN)", "Target Revenue (Ranap JKN)"]
@@ -237,33 +242,68 @@ try:
 
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
+        # =====================================================================
+        # --- PROSES INTEGRASI KALKULASI LOGIKA BARIS ---
+        # =====================================================================
+        def apply_row_logic(df_target):
+            if df_target.empty:
+                return df_target
+            
+            # 1. Pastikan Nilai Finansial murni ditarik sesuai kolom seleksi dropdown
+            if isinstance(actual_rev_column, list):
+                df_target['Calculated_Actual_Revenue'] = df_target[actual_rev_column].sum(axis=1)
+            else:
+                df_target['Calculated_Actual_Revenue'] = df_target[actual_rev_column]
+
+            if isinstance(target_rev_column, list):
+                df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column].sum(axis=1)
+            else:
+                df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
+
+            # Breakdown pembantu khusus visualisasi Pie Chart JKN vs Non-JKN
+            def sum_cols_safe(df_obj, cols):
+                if isinstance(cols, list): return df_obj[cols].sum(axis=1)
+                return df_obj[cols]
+                
+            df_target['Calculated_JKN_Revenue'] = sum_cols_safe(df_target, jkn_rev_source)
+            df_target['Calculated_Non_JKN_Revenue'] = sum_cols_safe(df_target, non_jkn_rev_source)
+            
+            df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
+            df_target['Total_Target_Kunjungan_Row'] = df_target[[c for c in target_kunj_cols if c in df_target.columns]].sum(axis=1)
+            df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
+            
+            # 2. Rumus Pendapatan Potensial Bersih (Mengunci Periode Berjalan)
+            def process_single_row(row):
+                if row['Total_Kunjungan_Row'] == 0:
+                    return 0.0
+                arpp_act = row['Calculated_Actual_Revenue'] / row['Total_Kunjungan_Row']
+                if row['Total_Target_Kunjungan_Row'] > 0:
+                    arpp_tar = row['Target_Rev_Sum_Row'] / row['Total_Target_Kunjungan_Row']
+                else:
+                    arpp_tar = arpp_act
+                    
+                if arpp_act < arpp_tar:
+                    return row['Total_Kunjungan_Row'] * arpp_tar
+                else:
+                    return row['Calculated_Actual_Revenue']
+
+            df_target['Pendapatan_Potensial_Row'] = df_target.apply(process_single_row, axis=1)
+            return df_target
+
+        df_filtered = apply_row_logic(df_filtered)
+        if not df_2026.empty:
+            df_2026 = apply_row_logic(df_2026)
+
         st.title(f"🏥 Performance Dashboard Helsa Group{title_addon}")
         st.markdown("---")
 
         if not df_filtered.empty:
-            def sum_revenue_dynamic(df_target, col_source):
-                if isinstance(col_source, list):
-                    return df_target[col_source].sum(axis=1)
-                return df_target[col_source]
-
-            df_filtered['Calculated_Actual_Revenue'] = sum_revenue_dynamic(df_filtered, actual_rev_column)
-            df_filtered['Calculated_JKN_Revenue'] = sum_revenue_dynamic(df_filtered, jkn_rev_source)
-            df_filtered['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_filtered, non_jkn_rev_source)
-            
-            if not df_2026.empty:
-                df_2026['Calculated_Actual_Revenue'] = sum_revenue_dynamic(df_2026, actual_rev_column)
-                df_2026['Calculated_JKN_Revenue'] = sum_revenue_dynamic(df_2026, jkn_rev_source)
-                df_2026['Calculated_Non_JKN_Revenue'] = sum_revenue_dynamic(df_2026, non_jkn_rev_source)
-
             # =====================================================================
-            # --- ROW 1: KPI CARDS WITH ARPP ---
+            # --- ROW 1: KPI CARDS SEJAJAR 4 KOLOM ---
             # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
-                if isinstance(target_rev_column, list):
-                    rev_tar_26 = df_2026[target_rev_column].sum().sum()
-                else:
-                    rev_tar_26 = df_2026[target_rev_column].sum()
+                rev_tar_26 = df_2026['Target_Rev_Sum_Row'].sum()
                     
                 ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
                 
@@ -272,10 +312,13 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
-                arpp_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
+                total_kunjungan_26 = df_2026['Total_Kunjungan_Row'].sum()
+                rev_potensial_26 = df_2026['Pendapatan_Potensial_Row'].sum()
+                loss_revenue = max(0.0, rev_potensial_26 - rev_act_26)
+                
+                arpp_aktual_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.subheader("Revenue 2026")
                     st.write(f"### {format_rupiah_human(rev_act_26)}")
@@ -287,10 +330,17 @@ try:
                     st.caption(f"Target EBITDA: {format_rupiah_human(ebit_tar_26)}")
                     st.write(f":green[{ach_ebit:.1f}% vs Target]" if ach_ebit >= 100 else f":orange[{ach_ebit:.1f}% vs Target]")
                 with col3:
-                    st.subheader("ARPP 2026")
-                    st.write(f"### Rp {arpp_26:,.0f}")
-                    st.caption("Rata-rata pendapatan finansial per satu pasien")
-                    st.write(f"Total Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
+                    st.subheader("ARPP Aktual 2026")
+                    st.write(f"### Rp {arpp_aktual_26:,.0f}")
+                    st.caption("Rata-rata pendapatan per satu pasien")
+                    st.write(f"Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
+                with col4:
+                    st.subheader("Pendapatan Potensial")
+                    st.write(f"### {format_rupiah_human(rev_potensial_26)}")
+                    if loss_revenue > 0:
+                        st.write(f":orange[⚠️ Revenue Loss: {format_rupiah_human(loss_revenue)}]")
+                    else:
+                        st.write(":green[✅ Target ARPP Terpenuhi]")
 
                 st.markdown("---")
 
@@ -392,14 +442,11 @@ try:
                 else:
                     st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Komposisi Pendapatan per RS.")
 
-            # =====================================================================
-            # --- ROW 4: REVISI BARU - PIE CHARTS KOMPOSISI JKN VS NON JKN (TAHUN 2026) ---
-            # =====================================================================
+            # --- ROW 4: PIE CHARTS KOMPOSISI JKN VS NON JKN (TAHUN 2026) ---
             st.markdown("---")
             st.subheader(f"📊 Analisis Komposisi Pasien JKN vs Non JKN (Khusus Tahun 2026)")
             if not df_2026.empty:
                 col_pie1, col_pie2 = st.columns(2)
-                
                 tot_jkn_rev = df_2026['Calculated_JKN_Revenue'].sum()
                 tot_non_jkn_rev = df_2026['Calculated_Non_JKN_Revenue'].sum()
                 
@@ -408,30 +455,14 @@ try:
                 
                 with col_pie1:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Berdasarkan Nilai Finansial (Revenue)</h5>", unsafe_allow_html=True)
-                    fig_pie_rev = px.pie(
-                        names=['Revenue JKN', 'Revenue Non JKN'],
-                        values=[tot_jkn_rev, tot_non_jkn_rev],
-                        hole=0.4,
-                        color_discrete_sequence=["#2ecc71", "#e74c3c"]
-                    )
-                    fig_pie_rev.update_traces(
-                        textinfo='percent+label',
-                        hovertemplate='<b>Kategori:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}'
-                    )
+                    fig_pie_rev = px.pie(names=['Revenue JKN', 'Revenue Non JKN'], values=[tot_jkn_rev, tot_non_jkn_rev], hole=0.4, color_discrete_sequence=["#2ecc71", "#e74c3c"])
+                    fig_pie_rev.update_traces(textinfo='percent+label', hovertemplate='<b>Kategori:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}')
                     st.plotly_chart(fig_pie_rev, use_container_width=True)
                     
                 with col_pie2:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Berdasarkan Volume Kunjungan Pasien</h5>", unsafe_allow_html=True)
-                    fig_pie_kunj = px.pie(
-                        names=['Kunjungan JKN', 'Kunjungan Non JKN'],
-                        values=[tot_jkn_kunj, tot_non_jkn_kunj],
-                        hole=0.4,
-                        color_discrete_sequence=["#3498db", "#f39c12"]
-                    )
-                    fig_pie_kunj.update_traces(
-                        textinfo='percent+label',
-                        hovertemplate='<b>Kategori:</b> %{label}<br><b>Volume:</b> %{value:,.0f} Kunjungan<br><b>Persentase:</b> %{percent}'
-                    )
+                    fig_pie_kunj = px.pie(names=['Kunjungan JKN', 'Kunjungan Non JKN'], values=[tot_jkn_kunj, tot_non_jkn_kunj], hole=0.4, color_discrete_sequence=["#3498db", "#f39c12"])
+                    fig_pie_kunj.update_traces(textinfo='percent+label', hovertemplate='<b>Kategori:</b> %{label}<br><b>Volume:</b> %{value:,.0f} Kunjungan<br><b>Persentase:</b> %{percent}')
                     st.plotly_chart(fig_pie_kunj, use_container_width=True)
             else:
                 st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk memuat Diagram Komposisi JKN vs Non JKN.")
@@ -440,48 +471,34 @@ try:
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
-            df_table = df_filtered.copy()
-            df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table['Calculated_Actual_Revenue'] * 100).fillna(0)
-            df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
-            df_table['ARPP (Per Pasien)'] = (df_table['Calculated_Actual_Revenue'] / df_table['Total Kunjungan']).fillna(0)
-            
-            df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Calculated_JKN_Revenue', 'Calculated_Non_JKN_Revenue', 'Actual EBITDA', 'EBITDA Margin %', 'Total Kunjungan', 'ARPP (Per Pasien)']].copy()
+            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Pendapatan_Potensial_Row', 'Actual EBITDA', 'EBITDA Margin %', 'Total_Kunjungan_Row']].copy()
             df_display.rename(columns={
                 'Calculated_Actual_Revenue': 'Actual Revenue',
-                'Calculated_JKN_Revenue': 'Rev JKN',
-                'Calculated_Non_JKN_Revenue': 'Rev Non JKN'
+                'Pendapatan_Potensial_Row': 'Pendapatan Potensial',
+                'Total_Kunjungan_Row': 'Total Kunjungan'
             }, inplace=True)
+            
+            df_display['ARPP (Pasien)'] = (df_display['Actual Revenue'] / df_display['Total Kunjungan']).fillna(0)
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
             col_btn1, col_btn2, _ = st.columns([1, 1, 4])
             with col_btn1:
                 excel_data = to_excel(df_display)
-                st.download_button(
-                    label="🟢 Export to Excel",
-                    data=excel_data,
-                    file_name="Performance_Report_Helsa.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                st.download_button(label="🟢 Export to Excel", data=excel_data, file_name="Performance_Report_Helsa.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_btn2:
                 csv_data = df_display.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="🔵 Export to CSV",
-                    data=csv_data,
-                    file_name="Performance_Report_Helsa.csv",
-                    mime="text/csv"
-                )
+                st.download_button(label="🔵 Export to CSV", data=csv_data, file_name="Performance_Report_Helsa.csv", mime="text/csv")
 
             st.dataframe(
                 df_display, 
                 use_container_width=True, 
                 column_config={
                     "Actual Revenue": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
-                    "Rev JKN": st.column_config.NumberColumn("Rev JKN", format="%,.0f"), 
-                    "Rev Non JKN": st.column_config.NumberColumn("Rev Non JKN", format="%,.0f"), 
+                    "Pendapatan Potensial": st.column_config.NumberColumn("Revenue Potensial", format="%,.0f"), 
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
                     "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
                     "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
-                    "ARPP (Per Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
+                    "ARPP (Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
                 }
             )
 
