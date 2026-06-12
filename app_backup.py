@@ -104,7 +104,6 @@ def load_combined_data():
     sheets = {"2026": "app_data", "2025": "app_data_2025"}
     combined_list = []
     
-    # Menambahkan porsi target kunjungan pasien ke baris pembersihan data numerik
     numeric_cols = [
         'Target Revenue (Total)', 'Actual Revenue (Total)',
         'Target Revenue (Rajal Total)', 'Actual Revenue (Rajal Total)',
@@ -115,7 +114,9 @@ def load_combined_data():
         'Target Revenue (Ranap Non JKN)', 'Actual Revenue (Ranap Non JKN)',
         'Target EBITDA', 'Actual EBITDA',
         'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
-        'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)'
+        'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)',
+        'Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)',
+        'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)'
     ]
 
     for year, s_name in sheets.items():
@@ -124,12 +125,6 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # --- DETEKSI KUNJUNGAN TARGET SECARA DINAMIS JIKA TERSEDIA ---
-            # Jika di spreadsheet 2026 kolom target kunjungan tertulis berbeda, script tetap membersihkannya
-            for col in df_tmp.columns:
-                if "Target Kunjungan" in col and col not in numeric_cols:
-                    numeric_cols.append(col)
-
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
             
@@ -181,14 +176,11 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # LOGIKA MATRIKS PENENTUAN SUMBU KOLOM REVENUE & OPERASIONAL
         if selected_layanan == "Rawat Jalan (Rajal)":
             jkn_rev_source = "Actual Revenue (Rajal JKN)"
             non_jkn_rev_source = "Actual Revenue (Rajal Non JKN)"
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Rajal Non JKN)']
-            
-            # Kolom Target Kunjungan (Berdasarkan asumsi nama sejenis/pola revenue)
             target_kunj_cols = ['Target Kunjungan (Rajal JKN)'] if selected_segmen == "JKN" else (['Target Kunjungan (Rajal Non JKN)'] if selected_segmen == "Non JKN" else ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)'])
             
             if selected_segmen == "JKN":
@@ -206,7 +198,6 @@ try:
             non_jkn_rev_source = "Actual Revenue (Ranap Non JKN)"
             jkn_kunj_cols = ['Aktual Kunjungan (Ranap JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Ranap Non JKN)']
-            
             target_kunj_cols = ['Target Kunjungan (Ranap JKN)'] if selected_segmen == "JKN" else (['Target Kunjungan (Ranap Non JKN)'] if selected_segmen == "Non JKN" else ['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)'])
             
             if selected_segmen == "JKN":
@@ -219,12 +210,11 @@ try:
                 target_rev_column = "Target Revenue (Ranap Total)"
                 actual_rev_column = "Actual Revenue (Ranap Total)"
         
-        else: # Total
+        else:
             jkn_rev_source = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
             non_jkn_rev_source = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Rajal Non JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
-            
             target_kunj_cols = ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)', 'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']
             
             if selected_segmen == "JKN":
@@ -286,20 +276,21 @@ try:
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
-                # 1. Perhitungan ARPP Aktual 2026
+                # 1. Volume & ARPP Aktual 2026
                 total_kunjungan_26 = df_2026[kunjungan_columns].sum().sum()
                 arpp_aktual_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
-                # 2. Perhitungan ARPP Target 2026 (Mendukung fallback jika kolom target kunjungan kosong)
-                available_target_cols = [c for col_list in [target_kunj_cols] for c in col_list if c in df_2026.columns]
+                # 2. Volume Target & ARPP Target 2026
+                available_target_cols = [c for c in target_kunj_cols if c in df_2026.columns]
                 total_target_kunjungan_26 = df_2026[available_target_cols].sum().sum() if available_target_cols else 0
                 
+                # JIKA TARGET KOSONG / BELUM MASUK PERIODENYA, ARPP TARGET = ARPP AKTUAL
                 if total_target_kunjungan_26 > 0:
                     arpp_target_26 = rev_tar_26 / total_target_kunjungan_26
                 else:
-                    arpp_target_26 = arpp_aktual_26 * 1.05  # Fallback: Estimasi target ARPP naik 5% jika kolom target kunjungan kosong
+                    arpp_target_26 = arpp_aktual_26
 
-                # 3. LOGIKA BARU: LOGIKA PENDAPATAN POTENSIAL
+                # 3. KALKULASI LOGIKA REVENUE POTENSIAL (MURNI TANPA FALLBACK ESTIMASI)
                 if arpp_aktual_26 < arpp_target_26:
                     rev_potensial_26 = total_kunjungan_26 * arpp_target_26
                     loss_revenue = rev_potensial_26 - rev_act_26
@@ -320,9 +311,9 @@ try:
                     st.subheader("Pendapatan Potensial 2026")
                     st.write(f"### {format_rupiah_human(rev_potensial_26)}")
                     if loss_revenue > 0:
-                        st.write(f":orange[⚠️ Potential Loss: {format_rupiah_human(loss_revenue)} (ARPP Under Target)]")
+                        st.write(f":orange[⚠️ Potential Loss: {format_rupiah_human(loss_revenue)}]")
                     else:
-                        st.write(":green[✅ ARPP Target Tercapai! Pendapatan Maksimal.]")
+                        st.write(":green[✅ ARPP Target Tercapai / Belum Berjalan.]")
 
                 st.markdown("---")
 
@@ -449,7 +440,7 @@ try:
             else:
                 st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk memuat Diagram Komposisi JKN vs Non JKN.")
 
-            # --- ROW 5: TABEL DETAIL DENGAN INDIKATOR REVENUE POTENSIAL ---
+            # --- ROW 5: TABEL DETAIL DENGAN INDIKATOR REVENUE POTENSIAL MURNI ---
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
@@ -457,11 +448,11 @@ try:
             df_table['EBITDA Margin %'] = (df_table['Actual EBITDA'] / df_table['Calculated_Actual_Revenue'] * 100).fillna(0)
             df_table['Total Kunjungan'] = df_table[kunjungan_columns].sum(axis=1)
             
-            # Formulasi Kolom Target Kunjungan Row-per-Row Dinamis
+            # Formulasi Kolom Target Kunjungan Row-per-Row
             av_cols = [c for c in target_kunj_cols if c in df_table.columns]
             df_table['Total Target Kunjungan'] = df_table[av_cols].sum(axis=1) if av_cols else 0
             
-            # Kalkulasi ARPP per baris
+            # Kalkulasi ARPP Aktual
             df_table['ARPP (Aktual)'] = (df_table['Calculated_Actual_Revenue'] / df_table['Total Kunjungan']).fillna(0)
             
             if isinstance(target_rev_column, list):
@@ -469,15 +460,17 @@ try:
             else:
                 df_table['Target_Rev_Sum'] = df_table[target_rev_column]
                 
-            df_table['ARPP (Target)'] = (df_table['Target_Rev_Sum'] / df_table['Total Target Kunjungan']).fillna(df_table['ARPP (Aktual)'] * 1.05)
+            # JIKA TARGET KUNJUNGAN PER BARIS ADALAH 0, COPIED LANGSUNG DARI ARPP AKTUALNYA (PENGUNCI CLEAN DATA)
+            df_table['ARPP (Target)'] = (df_table['Target_Rev_Sum'] / df_table['Total Target Kunjungan']).fillna(df_table['ARPP (Aktual)'])
+            df_table['ARPP (Target)'] = df_table.apply(lambda r: r['ARPP (Aktual)'] if r['Total Target Kunjungan'] == 0 else r['ARPP (Target)'], axis=1)
             
-            # Aplikasi Aturan Logika Potensial Row-per-Row
-            def calc_row_potential(row):
+            # Penerapan Aturan Potensial
+            def calc_row_potential_clean(row):
                 if row['ARPP (Aktual)'] < row['ARPP (Target)']:
                     return row['Total Kunjungan'] * row['ARPP (Target)']
                 return row['Calculated_Actual_Revenue']
                 
-            df_table['Pendapatan Potensial'] = df_table.apply(calc_row_potential, axis=1)
+            df_table['Pendapatan Potensial'] = df_table.apply(calc_row_potential_clean, axis=1)
 
             df_display = df_table[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Pendapatan Potensial', 'Actual EBITDA', 'EBITDA Margin %', 'Total Kunjungan', 'ARPP (Aktual)']].copy()
             df_display.rename(columns={'Calculated_Actual_Revenue': 'Actual Revenue'}, inplace=True)
