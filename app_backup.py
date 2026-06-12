@@ -338,7 +338,7 @@ try:
                     st.subheader("Pendapatan Potensial")
                     st.write(f"### {format_rupiah_human(rev_potensial_26)}")
                     if loss_revenue > 0:
-                        st.write(f":orange[⚠️ Potential Loss: {format_rupiah_human(loss_revenue)}]")
+                        st.write(f":orange[⚠️ Revenue Loss: {format_rupiah_human(loss_revenue)}]")
                     else:
                         st.write(":green[✅ Target ARPP Terpenuhi]")
 
