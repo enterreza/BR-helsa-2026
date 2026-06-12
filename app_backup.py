@@ -176,6 +176,7 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
+        # MAPPING KOLOM HARUS MENGACU PADA STRUKTUR ASLI DATASET ANDA
         if selected_layanan == "Rawat Jalan (Rajal)":
             jkn_rev_source = "Actual Revenue (Rajal JKN)"
             non_jkn_rev_source = "Actual Revenue (Rajal Non JKN)"
@@ -210,7 +211,7 @@ try:
                 target_rev_column = "Target Revenue (Ranap Total)"
                 actual_rev_column = "Actual Revenue (Ranap Total)"
         
-        else:
+        else: # TOTAL (Kembali membaca kolom Total asli dari spreadsheet Anda)
             jkn_rev_source = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
             non_jkn_rev_source = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
@@ -294,7 +295,7 @@ try:
 
         if not df_filtered.empty:
             # =====================================================================
-            # --- ROW 1: KPI CARDS (TATA LETAK STRUKTUR 4 KOLOM UTAMA) ---
+            # --- ROW 1: KPI CARDS ---
             # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
@@ -316,7 +317,6 @@ try:
                 
                 arpp_aktual_26 = (rev_act_26 / total_kunjungan_26) if total_kunjungan_26 > 0 else 0
 
-                # Pembuatan struktur 4 Kolom KPI Sejajar
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.subheader("Revenue 2026")
