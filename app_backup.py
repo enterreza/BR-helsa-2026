@@ -375,4 +375,131 @@ try:
                         pct_e = ((v26_e - v25_e) / abs(v25_e) * 100)
                         fig_q_comb.add_annotation(x=q, y=v26_e, text=f"Growth EBIT: {'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.1f}%", showarrow=False, yshift=-20, font=dict(color="#D35400", size=9, family="Arial"))
 
-            fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="
+            fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_q_comb, use_container_width=True)
+
+            # Grafik Bulanan Finansial
+            st.subheader("📅 Analisis Tren & Growth YoY per Bulan")
+            df_m_yoy = df_filtered.groupby(['Bulan', 'Tahun'])[['Calculated_Actual_Revenue', 'Actual EBITDA']].sum().reset_index()
+            df_m_yoy['Bulan'] = pd.Categorical(df_m_yoy['Bulan'], categories=month_order, ordered=True)
+            df_m_yoy = df_m_yoy.sort_values(['Bulan', 'Tahun'])
+            
+            fig_m_comb = go.Figure()
+            for yr, color in zip(["2025", "2026"], ["#AED6F1", "#2E86C1"]):
+                if yr in selected_tahun:
+                    yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
+                    fig_m_comb.add_trace(go.Bar(x=yr_data['Bulan'], y=yr_data['Calculated_Actual_Revenue'], name=f"Rev {yr}", marker_color=color, offsetgroup=yr))
+            
+            for yr, color, dash in zip(["2025", "2026"], ["#FAD7A0", "#D35400"], ["dash", "solid"]):
+                if yr in selected_tahun:
+                    yr_data = df_m_yoy[df_m_yoy['Tahun'] == yr]
+                    fig_m_comb.add_trace(go.Scatter(x=yr_data['Bulan'], y=yr_data['Actual EBITDA'], name=f"EBITDA {yr}", mode='lines+markers', line=dict(color=color, width=3, dash=dash)))
+
+            if "2025" in selected_tahun and "2026" in selected_tahun:
+                for b in selected_bulan:
+                    rows = df_m_yoy[df_m_yoy['Bulan'] == b]
+                    v26_r = rows[rows['Tahun'] == '2026']['Calculated_Actual_Revenue'].sum()
+                    v25_r = rows[rows['Tahun'] == '2025']['Calculated_Actual_Revenue'].sum()
+                    if v26_r != 0 and v25_r != 0:
+                        pct_r = ((v26_r - v25_r) / v25_r * 100)
+                        fig_m_comb.add_annotation(x=b, y=v26_r, text=f"{'▲' if pct_r >= 0 else '▼'} {abs(pct_r):.0f}%", showarrow=False, yshift=10, font=dict(color="#1E8449" if pct_r>=0 else "#C0392B", size=9, family="Arial Bold"))
+                    
+                    v26_e = rows[rows['Tahun'] == '2026']['Actual EBITDA'].sum()
+                    v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
+                    if v26_e != 0 and v25_e != 0:
+                        pct_e = ((v26_e - v25_e) / abs(v25_e) * 100)
+                        fig_m_comb.add_annotation(x=b, y=v26_e, text=f"{'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.0f}%", showarrow=False, yshift=-15, font=dict(color="#D35400", size=8, family="Arial"))
+
+            fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_m_comb, use_container_width=True)
+
+            # --- ROW 3: TREN PER RS & KONTRIBUSI (KUNCI TAHUN 2026) ---
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.subheader("🏥 Tren Pencapaian per RS (Khusus Tahun 2026)")
+                if not df_2026.empty:
+                    df_rs_actual = df_2026.pivot_table(index='Bulan', columns='Cabang', values='Calculated_Actual_Revenue', aggfunc='sum').reindex(month_order)
+                    
+                    fig_line = go.Figure()
+                    for rs in df_rs_actual.columns:
+                        color = COLOR_MAP.get(rs, DEFAULT_COLORS[0])
+                        fig_line.add_trace(go.Scatter(x=df_rs_actual.index, y=df_rs_actual[rs], name=f"Act {rs}", mode='lines+markers', line=dict(color=color)))
+                    fig_line.update_layout(yaxis_tickformat=',.0f', template="plotly_white", hovermode="x unified")
+                    st.plotly_chart(fig_line, use_container_width=True)
+                else:
+                    st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Tren Pencapaian per RS.")
+                
+            with col_b:
+                st.subheader("📊 Komposisi Pendapatan per RS (Khusus Tahun 2026)")
+                if not df_2026.empty:
+                    fig_pie = px.pie(df_2026, values='Calculated_Actual_Revenue', names='Cabang', hole=0.4, color='Cabang', color_discrete_map=COLOR_MAP)
+                    fig_pie.update_traces(
+                        textinfo='percent+label',
+                        hovertemplate='<b>Cabang:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}'
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                else:
+                    st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Komposisi Pendapatan per RS.")
+
+            # --- ROW 4: PIE CHARTS KOMPOSISI JKN VS NON JKN (TAHUN 2026) ---
+            st.markdown("---")
+            st.subheader(f"📊 Analisis Komposisi Pasien JKN vs Non JKN (Khusus Tahun 2026)")
+            if not df_2026.empty:
+                col_pie1, col_pie2 = st.columns(2)
+                tot_jkn_rev = df_2026['Calculated_JKN_Revenue'].sum()
+                tot_non_jkn_rev = df_2026['Calculated_Non_JKN_Revenue'].sum()
+                
+                tot_jkn_kunj = df_2026[jkn_kunj_cols].sum().sum()
+                tot_non_jkn_kunj = df_2026[non_jkn_kunj_cols].sum().sum()
+                
+                with col_pie1:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Berdasarkan Nilai Finansial (Revenue)</h5>", unsafe_allow_html=True)
+                    fig_pie_rev = px.pie(names=['Revenue JKN', 'Revenue Non JKN'], values=[tot_jkn_rev, tot_non_jkn_rev], hole=0.4, color_discrete_sequence=["#2ecc71", "#e74c3c"])
+                    fig_pie_rev.update_traces(textinfo='percent+label', hovertemplate='<b>Kategori:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}')
+                    st.plotly_chart(fig_pie_rev, use_container_width=True)
+                    
+                with col_pie2:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Berdasarkan Volume Kunjungan Pasien</h5>", unsafe_allow_html=True)
+                    fig_pie_kunj = px.pie(names=['Kunjungan JKN', 'Kunjungan Non JKN'], values=[tot_jkn_kunj, tot_non_jkn_kunj], hole=0.4, color_discrete_sequence=["#3498db", "#f39c12"])
+                    fig_pie_kunj.update_traces(textinfo='percent+label', hovertemplate='<b>Kategori:</b> %{label}<br><b>Volume:</b> %{value:,.0f} Kunjungan<br><b>Persentase:</b> %{percent}')
+                    st.plotly_chart(fig_pie_kunj, use_container_width=True)
+            else:
+                st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk memuat Diagram Komposisi JKN vs Non JKN.")
+
+            # --- ROW 5: TABEL DETAIL ---
+            st.markdown("---")
+            st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
+            
+            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Pendapatan_Potensial_Row', 'Actual EBITDA', 'EBITDA Margin %', 'Total_Kunjungan_Row']].copy()
+            df_display.rename(columns={
+                'Calculated_Actual_Revenue': 'Actual Revenue',
+                'Pendapatan_Potensial_Row': 'Pendapatan Potensial',
+                'Total_Kunjungan_Row': 'Total Kunjungan'
+            }, inplace=True)
+            
+            df_display['ARPP (Pasien)'] = (df_display['Actual Revenue'] / df_display['Total Kunjungan']).fillna(0)
+            df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
+
+            col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+            with col_btn1:
+                excel_data = to_excel(df_display)
+                st.download_button(label="🟢 Export to Excel", data=excel_data, file_name="Performance_Report_Helsa.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            with col_btn2:
+                csv_data = df_display.to_csv(index=False).encode('utf-8')
+                st.download_button(label="🔵 Export to CSV", data=csv_data, file_name="Performance_Report_Helsa.csv", mime="text/csv")
+
+            st.dataframe(
+                df_display, 
+                use_container_width=True, 
+                column_config={
+                    "Actual Revenue": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
+                    "Pendapatan Potensial": st.column_config.NumberColumn("Revenue Potensial", format="%,.0f"), 
+                    "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
+                    "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
+                    "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
+                    "ARPP (Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
+                }
+            )
+
+except Exception as e:
+    st.error(f"Sistem Error saat memuat fitur dashboard terbaru: {e}")
