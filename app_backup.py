@@ -176,59 +176,72 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # --- LOGIKA PEMETAAN KOLOM DATASET UTK KPI & GRAFIK TREN ---
+        # --- REVISI STRATEGIS MAPPING VARIABEL ---
         if selected_layanan == "Rawat Jalan (Rajal)":
             jkn_rev_source = "Actual Revenue (Rajal JKN)"
             non_jkn_rev_source = "Actual Revenue (Rajal Non JKN)"
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Rajal Non JKN)']
-            target_kunj_cols = ['Target Kunjungan (Rajal JKN)'] if selected_segmen == "JKN" else (['Target Kunjungan (Rajal Non JKN)'] if selected_segmen == "Non JKN" else ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)'])
             
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Rajal JKN)"
                 actual_rev_column = "Actual Revenue (Rajal JKN)"
+                kunjungan_columns = jkn_kunj_cols  # Kunci Pasien JKN saja
+                target_kunj_cols = ['Target Kunjungan (Rajal JKN)']
             elif selected_segmen == "Non JKN":
                 target_rev_column = "Target Revenue (Rajal Non JKN)"
                 actual_rev_column = "Actual Revenue (Rajal Non JKN)"
+                kunjungan_columns = non_jkn_kunj_cols  # Kunci Pasien Non-JKN saja
+                target_kunj_cols = ['Target Kunjungan (Rajal Non JKN)']
             else:
                 target_rev_column = "Target Revenue (Rajal Total)"
                 actual_rev_column = "Actual Revenue (Rajal Total)"
+                kunjungan_columns = jkn_kunj_cols + non_jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)']
         
         elif selected_layanan == "Rawat Inap (Ranap)":
             jkn_rev_source = "Actual Revenue (Ranap JKN)"
             non_jkn_rev_source = "Actual Revenue (Ranap Non JKN)"
             jkn_kunj_cols = ['Aktual Kunjungan (Ranap JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Ranap Non JKN)']
-            target_kunj_cols = ['Target Kunjungan (Ranap JKN)'] if selected_segmen == "JKN" else (['Target Kunjungan (Ranap Non JKN)'] if selected_segmen == "Non JKN" else ['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)'])
             
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Ranap JKN)"
                 actual_rev_column = "Actual Revenue (Ranap JKN)"
+                kunjungan_columns = jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Ranap JKN)']
             elif selected_segmen == "Non JKN":
                 target_rev_column = "Target Revenue (Ranap Non JKN)"
                 actual_rev_column = "Actual Revenue (Ranap Non JKN)"
+                kunjungan_columns = non_jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Ranap Non JKN)']
             else:
                 target_rev_column = "Target Revenue (Ranap Total)"
                 actual_rev_column = "Actual Revenue (Ranap Total)"
+                kunjungan_columns = jkn_kunj_cols + non_jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']
         
-        else: # TOTAL (Kembali mengunci kolom Total murni dari file Excel Anda)
+        else: # TOTAL
             jkn_rev_source = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
             non_jkn_rev_source = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
             jkn_kunj_cols = ['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Ranap JKN)']
             non_jkn_kunj_cols = ['Aktual Kunjungan (Rajal Non JKN)', 'Aktual Kunjungan (Ranap Non JKN)']
-            target_kunj_cols = ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)', 'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']
             
             if selected_segmen == "JKN":
                 target_rev_column = ["Target Revenue (Rajal JKN)", "Target Revenue (Ranap JKN)"]
                 actual_rev_column = ["Actual Revenue (Rajal JKN)", "Actual Revenue (Ranap JKN)"]
+                kunjungan_columns = jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Ranap JKN)']
             elif selected_segmen == "Non JKN":
                 target_rev_column = ["Target Revenue (Rajal Non JKN)", "Target Revenue (Ranap Non JKN)"]
                 actual_rev_column = ["Actual Revenue (Rajal Non JKN)", "Actual Revenue (Ranap Non JKN)"]
+                kunjungan_columns = non_jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Rajal Non JKN)', 'Target Kunjungan (Ranap Non JKN)']
             else:
                 target_rev_column = "Target Revenue (Total)"
                 actual_rev_column = "Actual Revenue (Total)"
-
-        kunjungan_columns = jkn_kunj_cols + non_jkn_kunj_cols
+                kunjungan_columns = jkn_kunj_cols + non_jkn_kunj_cols
+                target_kunj_cols = ['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)', 'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']
 
         segmen_suffix = f" - {selected_segmen}" if selected_segmen != "Total Pasien" else ""
         layanan_suffix = f" ({selected_layanan})" if selected_layanan != "Total" else ""
@@ -243,13 +256,12 @@ try:
         df_2026 = df_all[(df_all['Tahun'] == '2026') & (df_all['Cabang'].isin(selected_cabang)) & (df_all['Bulan'].isin(selected_bulan))].copy()
 
         # =====================================================================
-        # --- PROSES INTEGRASI KALKULASI LOGIKA BARIS ---
+        # --- PROSES UTAMA KALKULASI LOGIKA BARIS ---
         # =====================================================================
         def apply_row_logic(df_target):
             if df_target.empty:
                 return df_target
             
-            # 1. Pastikan Nilai Finansial murni ditarik sesuai kolom seleksi dropdown
             if isinstance(actual_rev_column, list):
                 df_target['Calculated_Actual_Revenue'] = df_target[actual_rev_column].sum(axis=1)
             else:
@@ -260,7 +272,6 @@ try:
             else:
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
 
-            # Breakdown pembantu khusus visualisasi Pie Chart JKN vs Non-JKN
             def sum_cols_safe(df_obj, cols):
                 if isinstance(cols, list): return df_obj[cols].sum(axis=1)
                 return df_obj[cols]
@@ -268,11 +279,11 @@ try:
             df_target['Calculated_JKN_Revenue'] = sum_cols_safe(df_target, jkn_rev_source)
             df_target['Calculated_Non_JKN_Revenue'] = sum_cols_safe(df_target, non_jkn_rev_source)
             
+            # Kunjungan dikunci dinamis berdasarkan array kunjungan_columns yang sudah terfilter di atas
             df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
             df_target['Total_Target_Kunjungan_Row'] = df_target[[c for c in target_kunj_cols if c in df_target.columns]].sum(axis=1)
             df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
             
-            # 2. Rumus Pendapatan Potensial Bersih (Mengunci Periode Berjalan)
             def process_single_row(row):
                 if row['Total_Kunjungan_Row'] == 0:
                     return 0.0
@@ -299,7 +310,7 @@ try:
 
         if not df_filtered.empty:
             # =====================================================================
-            # --- ROW 1: KPI CARDS SEJAJAR 4 KOLOM ---
+            # --- ROW 1: KPI CARDS ---
             # =====================================================================
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
@@ -338,7 +349,7 @@ try:
                     st.subheader("Pendapatan Potensial")
                     st.write(f"### {format_rupiah_human(rev_potensial_26)}")
                     if loss_revenue > 0:
-                        st.write(f":orange[⚠️ Revenue Loss: {format_rupiah_human(loss_revenue)}]")
+                        st.write(f":orange[⚠️ Potential Loss: {format_rupiah_human(loss_revenue)}]")
                     else:
                         st.write(":green[✅ Target ARPP Terpenuhi]")
 
@@ -450,6 +461,7 @@ try:
                 tot_jkn_rev = df_2026['Calculated_JKN_Revenue'].sum()
                 tot_non_jkn_rev = df_2026['Calculated_Non_JKN_Revenue'].sum()
                 
+                # Sumbu pie chart volume murni mengambil breakdown lokal penjaminnya masing-masing
                 tot_jkn_kunj = df_2026[jkn_kunj_cols].sum().sum()
                 tot_non_jkn_kunj = df_2026[non_jkn_kunj_cols].sum().sum()
                 
