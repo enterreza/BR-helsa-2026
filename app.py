@@ -57,11 +57,14 @@ LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
 
+# --- PENAMBAHAN CABANG BUNDA NANDA & RAWALUMBU PADA COLOR MAP ---
 COLOR_MAP = {
     "Jatirahayu": "#636EFA", 
     "Cikampek": "#EF553B",   
     "Citeureup": "#00CC96",  
     "Ciputat": "#AB63FA",    
+    "Bunda Nanda": "#FFA15A",
+    "Rawalumbu": "#19D3F3"
 }
 DEFAULT_COLORS = px.colors.qualitative.Plotly
 
@@ -186,12 +189,12 @@ try:
             if selected_segmen == "JKN":
                 target_rev_column = "Target Revenue (Rajal JKN)"
                 actual_rev_column = "Actual Revenue (Rajal JKN)"
-                kunjungan_columns = jkn_kunj_cols  # Kunci Pasien JKN saja
+                kunjungan_columns = jkn_kunj_cols
                 target_kunj_cols = ['Target Kunjungan (Rajal JKN)']
             elif selected_segmen == "Non JKN":
                 target_rev_column = "Target Revenue (Rajal Non JKN)"
                 actual_rev_column = "Actual Revenue (Rajal Non JKN)"
-                kunjungan_columns = non_jkn_kunj_cols  # Kunci Pasien Non-JKN saja
+                kunjungan_columns = non_jkn_kunj_cols
                 target_kunj_cols = ['Target Kunjungan (Rajal Non JKN)']
             else:
                 target_rev_column = "Target Revenue (Rajal Total)"
@@ -279,7 +282,6 @@ try:
             df_target['Calculated_JKN_Revenue'] = sum_cols_safe(df_target, jkn_rev_source)
             df_target['Calculated_Non_JKN_Revenue'] = sum_cols_safe(df_target, non_jkn_rev_source)
             
-            # Kunjungan dikunci dinamis berdasarkan array kunjungan_columns yang sudah terfilter di atas
             df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
             df_target['Total_Target_Kunjungan_Row'] = df_target[[c for c in target_kunj_cols if c in df_target.columns]].sum(axis=1)
             df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
@@ -461,7 +463,6 @@ try:
                 tot_jkn_rev = df_2026['Calculated_JKN_Revenue'].sum()
                 tot_non_jkn_rev = df_2026['Calculated_Non_JKN_Revenue'].sum()
                 
-                # Sumbu pie chart volume murni mengambil breakdown lokal penjaminnya masing-masing
                 tot_jkn_kunj = df_2026[jkn_kunj_cols].sum().sum()
                 tot_non_jkn_kunj = df_2026[non_jkn_kunj_cols].sum().sum()
                 
