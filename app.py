@@ -345,7 +345,7 @@ try:
                 with col3:
                     st.subheader("ARPP Aktual 2026")
                     st.write(f"### Rp {arpp_aktual_26:,.0f}")
-                    st.caption("Rata-rata pendapatan per satu pasien")
+                    st.caption("Rata-rata pendapatan per satu kunjungan pasien")
                     st.write(f"Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
                 with col4:
                     st.subheader("Pendapatan Potensial")
