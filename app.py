@@ -387,7 +387,7 @@ try:
                     v25_e = rows[rows['Tahun'] == '2025']['Actual EBITDA'].sum()
                     if v26_e != 0 and v25_e != 0:
                         pct_e = ((v26_e - v25_e) / abs(v25_e) * 100)
-                        fig_q_comb.add_annotation(x=q, y=v26_e, text=f"Growth EBIT: {'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.1f}%", showarrow=False, yshift=-20, font=dict(color="#D35400", size=9, family="Arial"))
+                        fig_q_comb.add_annotation(x=q, y=v26_e, text=f"Growth EBITDA: {'▲' if pct_e >= 0 else '▼'} {abs(pct_e):.1f}%", showarrow=False, yshift=-20, font=dict(color="#D35400", size=9, family="Arial"))
 
             fig_q_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_q_comb, use_container_width=True)
