@@ -348,7 +348,11 @@ try:
                     st.caption("Rata-rata pendapatan per satu kunjungan pasien")
                     st.write(f"Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
                 with col4:
-                    st.subheader("Pendapatan Potensial")
+                    # HINT PENJELASAN PENDAPATAN POTENSIAL
+                    st.subheader(
+                        "Pendapatan Potensial", 
+                        help="Estimasi total pendapatan yang seharusnya diperoleh dari volume kunjungan pasien saat ini jika nilai transaksi rata-rata (ARPP) minimal memenuhi Target ARPP. Jika ARPP Target sudah tercapai atau periode belum berjalan, maka menggunakan nilai Pendapatan Aktual."
+                    )
                     st.write(f"### {format_rupiah_human(rev_potensial_26)}")
                     if loss_revenue > 0:
                         st.write(f":orange[⚠️ Potential Loss: {format_rupiah_human(loss_revenue)}]")
