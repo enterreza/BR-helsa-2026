@@ -57,7 +57,6 @@ LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
 
-# --- PENAMBAHAN CABANG BUNDA NANDA & RAWALUMBU PADA COLOR MAP ---
 COLOR_MAP = {
     "Jatirahayu": "#636EFA", 
     "Cikampek": "#EF553B",   
@@ -432,92 +431,45 @@ try:
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
             # =====================================================================
-            # --- SEKSI BARU: ANALISIS KUNJUNGAN PASIEN (BESARAN, TARGET & PERTUMBUHAN) ---
+            # --- SEKSI: PENCAPAIAN KUNJUNGAN PASIEN PER RS ---
             # =====================================================================
             st.markdown("---")
-            st.subheader("👥 Analisis Kunjungan Pasien (Besaran, Target, & Pertumbuhan)")
-            
-            col_kunj1, col_kunj2 = st.columns(2)
-            
-            with col_kunj1:
-                st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Tren Kunjungan Pasien & Growth YoY (Bulanan)</h5>", unsafe_allow_html=True)
-                df_m_kunj = df_filtered.groupby(['Bulan', 'Tahun'])[['Total_Kunjungan_Row', 'Total_Target_Kunjungan_Row']].sum().reset_index()
-                df_m_kunj['Bulan'] = pd.Categorical(df_m_kunj['Bulan'], categories=month_order, ordered=True)
-                df_m_kunj = df_m_kunj.sort_values(['Bulan', 'Tahun'])
+            st.subheader("👥 Pencapaian Kunjungan Pasien per RS (Khusus Tahun 2026)")
+            if not df_2026.empty:
+                df_rs_kunj = df_2026.groupby('Cabang')[['Total_Kunjungan_Row', 'Total_Target_Kunjungan_Row']].sum().reset_index()
+                
+                fig_rs_kunj = go.Figure()
+                fig_rs_kunj.add_trace(go.Bar(
+                    x=df_rs_kunj['Cabang'], y=df_rs_kunj['Total_Kunjungan_Row'],
+                    name="Kunjungan Aktual 2026", marker_color="#3498DB"
+                ))
+                fig_rs_kunj.add_trace(go.Bar(
+                    x=df_rs_kunj['Cabang'], y=df_rs_kunj['Total_Target_Kunjungan_Row'],
+                    name="Target Kunjungan 2026", marker_color="#BDC3C7"
+                ))
 
-                fig_m_kunj = go.Figure()
-                for yr, color in zip(["2025", "2026"], ["#81C784", "#2ECC71"]):
-                    if yr in selected_tahun:
-                        yr_kdata = df_m_kunj[df_m_kunj['Tahun'] == yr]
-                        fig_m_kunj.add_trace(go.Bar(
-                            x=yr_kdata['Bulan'], y=yr_kdata['Total_Kunjungan_Row'], 
-                            name=f"Kunjungan {yr}", marker_color=color, offsetgroup=yr
-                        ))
+                for idx, row in df_rs_kunj.iterrows():
+                    act_k = row['Total_Kunjungan_Row']
+                    tar_k = row['Total_Target_Kunjungan_Row']
+                    if act_k > 0 and tar_k > 0:
+                        ach_k = (act_k / tar_k) * 100
+                        fig_rs_kunj.add_annotation(
+                            x=row['Cabang'], y=max(act_k, tar_k),
+                            text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
+                            font=dict(color="#2980B9", size=10, family="Arial Bold")
+                        )
 
-                if "2026" in selected_tahun:
-                    yr26_kdata = df_m_kunj[df_m_kunj['Tahun'] == '2026']
-                    fig_m_kunj.add_trace(go.Scatter(
-                        x=yr26_kdata['Bulan'], y=yr26_kdata['Total_Target_Kunjungan_Row'],
-                        name="Target Kunjungan 2026", mode='lines+markers',
-                        line=dict(color="#E67E22", width=2, dash='dash')
-                    ))
-
-                if "2025" in selected_tahun and "2026" in selected_tahun:
-                    for b in selected_bulan:
-                        k_rows = df_m_kunj[df_m_kunj['Bulan'] == b]
-                        kv26 = k_rows[k_rows['Tahun'] == '2026']['Total_Kunjungan_Row'].sum()
-                        kv25 = k_rows[k_rows['Tahun'] == '2025']['Total_Kunjungan_Row'].sum()
-                        if kv26 > 0 and kv25 > 0:
-                            pct_k = ((kv26 - kv25) / kv25 * 100)
-                            fig_m_kunj.add_annotation(
-                                x=b, y=kv26, text=f"{'▲' if pct_k >= 0 else '▼'} {abs(pct_k):.1f}%",
-                                showarrow=False, yshift=12,
-                                font=dict(color="#1E8449" if pct_k >= 0 else "#C0392B", size=9, family="Arial Bold")
-                            )
-
-                fig_m_kunj.update_layout(
-                    yaxis_tickformat=',.0f', template="plotly_white", barmode='group',
-                    hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                fig_rs_kunj.update_layout(
+                    barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
-                fig_m_kunj.update_traces(hovertemplate='<b>Bulan:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
-                st.plotly_chart(fig_m_kunj, use_container_width=True)
-
-            with col_kunj2:
-                st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Pasien per RS (Khusus Tahun 2026)</h5>", unsafe_allow_html=True)
-                if not df_2026.empty:
-                    df_rs_kunj = df_2026.groupby('Cabang')[['Total_Kunjungan_Row', 'Total_Target_Kunjungan_Row']].sum().reset_index()
-                    
-                    fig_rs_kunj = go.Figure()
-                    fig_rs_kunj.add_trace(go.Bar(
-                        x=df_rs_kunj['Cabang'], y=df_rs_kunj['Total_Kunjungan_Row'],
-                        name="Kunjungan Aktual 2026", marker_color="#3498DB"
-                    ))
-                    fig_rs_kunj.add_trace(go.Bar(
-                        x=df_rs_kunj['Cabang'], y=df_rs_kunj['Total_Target_Kunjungan_Row'],
-                        name="Target Kunjungan 2026", marker_color="#BDC3C7"
-                    ))
-
-                    for idx, row in df_rs_kunj.iterrows():
-                        act_k = row['Total_Kunjungan_Row']
-                        tar_k = row['Total_Target_Kunjungan_Row']
-                        if act_k > 0 and tar_k > 0:
-                            ach_k = (act_k / tar_k) * 100
-                            fig_rs_kunj.add_annotation(
-                                x=row['Cabang'], y=max(act_k, tar_k),
-                                text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
-                                font=dict(color="#2980B9", size=10, family="Arial Bold")
-                            )
-
-                    fig_rs_kunj.update_layout(
-                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    fig_rs_kunj.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
-                    st.plotly_chart(fig_rs_kunj, use_container_width=True)
-                else:
-                    st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Pencapaian Kunjungan Pasien per RS.")
+                fig_rs_kunj.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
+                st.plotly_chart(fig_rs_kunj, use_container_width=True)
+            else:
+                st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Pencapaian Kunjungan Pasien per RS.")
 
             # --- ROW 3: TREN PER RS & KONTRIBUSI (KUNCI TAHUN 2026) ---
+            st.markdown("---")
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("🏥 Tren Pencapaian per RS (Khusus Tahun 2026)")
