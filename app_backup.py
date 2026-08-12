@@ -285,6 +285,12 @@ try:
             df_target['Total_Target_Kunjungan_Row'] = df_target[[c for c in target_kunj_cols if c in df_target.columns]].sum(axis=1)
             df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
             
+            # Kolom khusus breakdown Rajal & Ranap
+            df_target['Aktual_Kunjungan_Rajal_Total'] = df_target[['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)']].sum(axis=1)
+            df_target['Target_Kunjungan_Rajal_Total'] = df_target[['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)']].sum(axis=1)
+            df_target['Aktual_Kunjungan_Ranap_Total'] = df_target[['Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)']].sum(axis=1)
+            df_target['Target_Kunjungan_Ranap_Total'] = df_target[['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']].sum(axis=1)
+            
             def process_single_row(row):
                 if row['Total_Kunjungan_Row'] == 0:
                     return 0.0
@@ -347,7 +353,6 @@ try:
                     st.caption("Rata-rata pendapatan per satu kunjungan pasien")
                     st.write(f"Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
                 with col4:
-                    # HINT PENJELASAN PENDAPATAN POTENSIAL
                     st.subheader(
                         "Pendapatan Potensial", 
                         help="Estimasi total pendapatan yang seharusnya diperoleh dari volume kunjungan pasien saat ini jika nilai transaksi rata-rata (ARPP) minimal memenuhi Target ARPP. Jika ARPP Target sudah tercapai atau periode belum berjalan, maka menggunakan nilai Pendapatan Aktual."
@@ -431,40 +436,78 @@ try:
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
             # =====================================================================
-            # --- SEKSI: PENCAPAIAN KUNJUNGAN PASIEN PER RS ---
+            # --- SEKSI: PENCAPAIAN KUNJUNGAN PASIEN PER RS (BREAKDOWN RAJAL & RANAP) ---
             # =====================================================================
             st.markdown("---")
             st.subheader("👥 Pencapaian Kunjungan Pasien per RS (Khusus Tahun 2026)")
             if not df_2026.empty:
-                df_rs_kunj = df_2026.groupby('Cabang')[['Total_Kunjungan_Row', 'Total_Target_Kunjungan_Row']].sum().reset_index()
+                col_rajal, col_ranap = st.columns(2)
                 
-                fig_rs_kunj = go.Figure()
-                fig_rs_kunj.add_trace(go.Bar(
-                    x=df_rs_kunj['Cabang'], y=df_rs_kunj['Total_Kunjungan_Row'],
-                    name="Kunjungan Aktual 2026", marker_color="#3498DB"
-                ))
-                fig_rs_kunj.add_trace(go.Bar(
-                    x=df_rs_kunj['Cabang'], y=df_rs_kunj['Total_Target_Kunjungan_Row'],
-                    name="Target Kunjungan 2026", marker_color="#BDC3C7"
-                ))
+                # --- GRAFIK 1: BREAKDOWN RAWAT JALAN (RAJAL) ---
+                with col_rajal:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Rawat Jalan (Rajal)</h5>", unsafe_allow_html=True)
+                    df_rajal_kunj = df_2026.groupby('Cabang')[['Aktual_Kunjungan_Rajal_Total', 'Target_Kunjungan_Rajal_Total']].sum().reset_index()
+                    
+                    fig_rajal = go.Figure()
+                    fig_rajal.add_trace(go.Bar(
+                        x=df_rajal_kunj['Cabang'], y=df_rajal_kunj['Aktual_Kunjungan_Rajal_Total'],
+                        name="Aktual Rajal 2026", marker_color="#3498DB"
+                    ))
+                    fig_rajal.add_trace(go.Bar(
+                        x=df_rajal_kunj['Cabang'], y=df_rajal_kunj['Target_Kunjungan_Rajal_Total'],
+                        name="Target Rajal 2026", marker_color="#BDC3C7"
+                    ))
 
-                for idx, row in df_rs_kunj.iterrows():
-                    act_k = row['Total_Kunjungan_Row']
-                    tar_k = row['Total_Target_Kunjungan_Row']
-                    if act_k > 0 and tar_k > 0:
-                        ach_k = (act_k / tar_k) * 100
-                        fig_rs_kunj.add_annotation(
-                            x=row['Cabang'], y=max(act_k, tar_k),
-                            text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
-                            font=dict(color="#2980B9", size=10, family="Arial Bold")
-                        )
+                    for idx, row in df_rajal_kunj.iterrows():
+                        act_k = row['Aktual_Kunjungan_Rajal_Total']
+                        tar_k = row['Target_Kunjungan_Rajal_Total']
+                        if act_k > 0 and tar_k > 0:
+                            ach_k = (act_k / tar_k) * 100
+                            fig_rajal.add_annotation(
+                                x=row['Cabang'], y=max(act_k, tar_k),
+                                text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
+                                font=dict(color="#2980B9", size=10, family="Arial Bold")
+                            )
 
-                fig_rs_kunj.update_layout(
-                    barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                fig_rs_kunj.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
-                st.plotly_chart(fig_rs_kunj, use_container_width=True)
+                    fig_rajal.update_layout(
+                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_rajal.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
+                    st.plotly_chart(fig_rajal, use_container_width=True)
+
+                # --- GRAFIK 2: BREAKDOWN RAWAT INAP (RANAP) ---
+                with col_ranap:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Rawat Inap (Ranap)</h5>", unsafe_allow_html=True)
+                    df_ranap_kunj = df_2026.groupby('Cabang')[['Aktual_Kunjungan_Ranap_Total', 'Target_Kunjungan_Ranap_Total']].sum().reset_index()
+                    
+                    fig_ranap = go.Figure()
+                    fig_ranap.add_trace(go.Bar(
+                        x=df_ranap_kunj['Cabang'], y=df_ranap_kunj['Aktual_Kunjungan_Ranap_Total'],
+                        name="Aktual Ranap 2026", marker_color="#E67E22"
+                    ))
+                    fig_ranap.add_trace(go.Bar(
+                        x=df_ranap_kunj['Cabang'], y=df_ranap_kunj['Target_Kunjungan_Ranap_Total'],
+                        name="Target Ranap 2026", marker_color="#BDC3C7"
+                    ))
+
+                    for idx, row in df_ranap_kunj.iterrows():
+                        act_k = row['Aktual_Kunjungan_Ranap_Total']
+                        tar_k = row['Target_Kunjungan_Ranap_Total']
+                        if act_k > 0 and tar_k > 0:
+                            ach_k = (act_k / tar_k) * 100
+                            fig_ranap.add_annotation(
+                                x=row['Cabang'], y=max(act_k, tar_k),
+                                text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
+                                font=dict(color="#D35400", size=10, family="Arial Bold")
+                            )
+
+                    fig_ranap.update_layout(
+                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_ranap.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
+                    st.plotly_chart(fig_ranap, use_container_width=True)
             else:
                 st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Pencapaian Kunjungan Pasien per RS.")
 
