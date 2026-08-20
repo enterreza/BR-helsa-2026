@@ -57,7 +57,6 @@ LOGO_FILE = "HELSA Rumah sakit.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
 
-# --- PENAMBAHAN CABANG BUNDA NANDA & RAWALUMBU PADA COLOR MAP ---
 COLOR_MAP = {
     "Jatirahayu": "#636EFA", 
     "Cikampek": "#EF553B",   
@@ -119,7 +118,8 @@ def load_combined_data():
         'Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)',
         'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)',
         'Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)',
-        'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)'
+        'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)',
+        'Trajectory', 'Trajectory Revenue', 'Target Trajectory', 'Trajectory (Total)'
     ]
 
     for year, s_name in sheets.items():
@@ -128,6 +128,11 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
+            # Deteksi otomatis kolom dengan kata kunci Trajectory
+            for col in df_tmp.columns:
+                if 'trajectory' in col.lower() and col not in numeric_cols:
+                    numeric_cols.append(col)
+
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
             if 'Bulan' not in df_tmp.columns: df_tmp['Bulan'] = 'Unknown'
             
@@ -179,7 +184,7 @@ try:
         segmen_opsi = ["Total Pasien", "JKN", "Non JKN"]
         selected_segmen = st.sidebar.selectbox("Pilih Segmen Penjamin", segmen_opsi, index=0)
 
-        # --- REVISI STRATEGIS MAPPING VARIABEL ---
+        # --- MAPPING VARIABEL FILTER ---
         if selected_layanan == "Rawat Jalan (Rajal)":
             jkn_rev_source = "Actual Revenue (Rajal JKN)"
             non_jkn_rev_source = "Actual Revenue (Rajal Non JKN)"
@@ -275,6 +280,13 @@ try:
             else:
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
 
+            # Pencarian dan kalkulasi kolom Trajectory
+            traj_cols = [c for c in ['Trajectory', 'Trajectory Revenue', 'Target Trajectory', 'Trajectory (Total)'] if c in df_target.columns]
+            if not traj_cols:
+                traj_cols = [c for c in df_target.columns if 'trajectory' in c.lower()]
+            
+            df_target['Calculated_Trajectory'] = df_target[traj_cols].sum(axis=1) if traj_cols else 0.0
+
             def sum_cols_safe(df_obj, cols):
                 if isinstance(cols, list): return df_obj[cols].sum(axis=1)
                 return df_obj[cols]
@@ -285,6 +297,12 @@ try:
             df_target['Total_Kunjungan_Row'] = df_target[kunjungan_columns].sum(axis=1)
             df_target['Total_Target_Kunjungan_Row'] = df_target[[c for c in target_kunj_cols if c in df_target.columns]].sum(axis=1)
             df_target['EBITDA Margin %'] = (df_target['Actual EBITDA'] / df_target['Calculated_Actual_Revenue'] * 100).fillna(0)
+            
+            # Kolom khusus breakdown Rajal & Ranap
+            df_target['Aktual_Kunjungan_Rajal_Total'] = df_target[['Aktual Kunjungan (Rajal JKN)', 'Aktual Kunjungan (Rajal Non JKN)']].sum(axis=1)
+            df_target['Target_Kunjungan_Rajal_Total'] = df_target[['Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)']].sum(axis=1)
+            df_target['Aktual_Kunjungan_Ranap_Total'] = df_target[['Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)']].sum(axis=1)
+            df_target['Target_Kunjungan_Ranap_Total'] = df_target[['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']].sum(axis=1)
             
             def process_single_row(row):
                 if row['Total_Kunjungan_Row'] == 0:
@@ -317,8 +335,10 @@ try:
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
                 rev_tar_26 = df_2026['Target_Rev_Sum_Row'].sum()
+                traj_26 = df_2026['Calculated_Trajectory'].sum()
                     
                 ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
+                ach_traj = (rev_act_26 / traj_26 * 100) if traj_26 > 0 else 0
                 
                 ebit_act_26 = df_2026['Actual EBITDA'].sum()
                 ebit_tar_26 = df_2026['Target EBITDA'].sum()
@@ -337,6 +357,8 @@ try:
                     st.write(f"### {format_rupiah_human(rev_act_26)}")
                     st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
                     st.write(f":green[{ach_rev:.1f}% vs Target]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target]")
+                    if traj_26 > 0:
+                        st.caption(f"📈 Kesiapan IPO (Trajectory): :blue[{ach_traj:.1f}%]")
                 with col2:
                     st.subheader("Total EBITDA & Margin")
                     st.write(f"### {format_rupiah_human(ebit_act_26)} ({ebitda_margin_26:.1f}%)")
@@ -348,7 +370,6 @@ try:
                     st.caption("Rata-rata pendapatan per satu kunjungan pasien")
                     st.write(f"Vol: {total_kunjungan_26:,.0f} Kunjungan Pasien")
                 with col4:
-                    # HINT PENJELASAN PENDAPATAN POTENSIAL
                     st.subheader(
                         "Pendapatan Potensial", 
                         help="Estimasi total pendapatan yang seharusnya diperoleh dari volume kunjungan pasien saat ini jika nilai transaksi rata-rata (ARPP) minimal memenuhi Target ARPP. Jika ARPP Target sudah tercapai atau periode belum berjalan, maka menggunakan nilai Pendapatan Aktual."
@@ -358,6 +379,84 @@ try:
                         st.write(f":orange[⚠️ Potential Loss: {format_rupiah_human(loss_revenue)}]")
                     else:
                         st.write(":green[✅ Target ARPP Terpenuhi]")
+
+                st.markdown("---")
+
+            # =====================================================================
+            # --- SEKSI BARU: ACTUAL REVENUE VS TRAJECTORY IPO (STRATEGIC VALUATION) ---
+            # =====================================================================
+            if not df_2026.empty and df_2026['Calculated_Trajectory'].sum() > 0:
+                st.subheader(
+                    "🚀 Strategic IPO Readiness: Actual Revenue vs Trajectory 2026", 
+                    help="Trajectory adalah target pendapatan strategis yang dirancang untuk kesiapan menuju IPO guna mendongkrak valuasi korporasi."
+                )
+                
+                col_traj1, col_traj2 = st.columns(2)
+                
+                with col_traj1:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Tren Bulanan: Actual Revenue vs Trajectory IPO</h5>", unsafe_allow_html=True)
+                    df_m_traj = df_2026.groupby('Bulan')[['Calculated_Actual_Revenue', 'Calculated_Trajectory']].sum().reindex(month_order).dropna(how='all').reset_index()
+                    
+                    fig_traj_m = go.Figure()
+                    fig_traj_m.add_trace(go.Bar(
+                        x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Actual_Revenue'],
+                        name="Actual Revenue", marker_color="#2E86C1"
+                    ))
+                    fig_traj_m.add_trace(go.Scatter(
+                        x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Trajectory'],
+                        name="Trajectory IPO", mode='lines+markers',
+                        line=dict(color="#E74C3C", width=3, dash='dash')
+                    ))
+                    
+                    for idx, row in df_m_traj.iterrows():
+                        act_v = row['Calculated_Actual_Revenue']
+                        trj_v = row['Calculated_Trajectory']
+                        if act_v > 0 and trj_v > 0:
+                            pct_trj = (act_v / trj_v) * 100
+                            fig_traj_m.add_annotation(
+                                x=row['Bulan'], y=act_v,
+                                text=f"{pct_trj:.1f}%", showarrow=False, yshift=12,
+                                font=dict(color="#1E8449" if pct_trj >= 100 else "#E74C3C", size=9, family="Arial Bold")
+                            )
+
+                    fig_traj_m.update_layout(
+                        yaxis_tickformat=',.0f', template="plotly_white", barmode='group',
+                        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_traj_m.update_traces(hovertemplate='<b>Bulan:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
+                    st.plotly_chart(fig_traj_m, use_container_width=True)
+
+                with col_traj2:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Kesiapan IPO per Cabang RS (Actual vs Trajectory)</h5>", unsafe_allow_html=True)
+                    df_rs_traj = df_2026.groupby('Cabang')[['Calculated_Actual_Revenue', 'Calculated_Trajectory']].sum().reset_index()
+                    
+                    fig_traj_rs = go.Figure()
+                    fig_traj_rs.add_trace(go.Bar(
+                        x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Actual_Revenue'],
+                        name="Actual Revenue", marker_color="#2E86C1"
+                    ))
+                    fig_traj_rs.add_trace(go.Bar(
+                        x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Trajectory'],
+                        name="Trajectory IPO", marker_color="#E74C3C", opacity=0.7
+                    ))
+
+                    for idx, row in df_rs_traj.iterrows():
+                        act_v = row['Calculated_Actual_Revenue']
+                        trj_v = row['Calculated_Trajectory']
+                        if act_v > 0 and trj_v > 0:
+                            pct_trj = (act_v / trj_v) * 100
+                            fig_traj_rs.add_annotation(
+                                x=row['Cabang'], y=max(act_v, trj_v),
+                                text=f"Ach: {pct_trj:.1f}%", showarrow=False, yshift=12,
+                                font=dict(color="#1E8449" if pct_trj >= 100 else "#E74C3C", size=10, family="Arial Bold")
+                            )
+
+                    fig_traj_rs.update_layout(
+                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_traj_rs.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
+                    st.plotly_chart(fig_traj_rs, use_container_width=True)
 
                 st.markdown("---")
 
@@ -431,7 +530,84 @@ try:
             fig_m_comb.update_layout(yaxis_tickformat=',.0f', template="plotly_white", barmode='group', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_m_comb, use_container_width=True)
 
+            # =====================================================================
+            # --- SEKSI: PENCAPAIAN KUNJUNGAN PASIEN PER RS (BREAKDOWN RAJAL & RANAP) ---
+            # =====================================================================
+            st.markdown("---")
+            st.subheader("👥 Pencapaian Kunjungan Pasien per RS (Khusus Tahun 2026)")
+            if not df_2026.empty:
+                col_rajal, col_ranap = st.columns(2)
+                
+                # --- GRAFIK 1: BREAKDOWN RAWAT JALAN (RAJAL) ---
+                with col_rajal:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Rawat Jalan (Rajal)</h5>", unsafe_allow_html=True)
+                    df_rajal_kunj = df_2026.groupby('Cabang')[['Aktual_Kunjungan_Rajal_Total', 'Target_Kunjungan_Rajal_Total']].sum().reset_index()
+                    
+                    fig_rajal = go.Figure()
+                    fig_rajal.add_trace(go.Bar(
+                        x=df_rajal_kunj['Cabang'], y=df_rajal_kunj['Aktual_Kunjungan_Rajal_Total'],
+                        name="Aktual Rajal 2026", marker_color="#3498DB"
+                    ))
+                    fig_rajal.add_trace(go.Bar(
+                        x=df_rajal_kunj['Cabang'], y=df_rajal_kunj['Target_Kunjungan_Rajal_Total'],
+                        name="Target Rajal 2026", marker_color="#BDC3C7"
+                    ))
+
+                    for idx, row in df_rajal_kunj.iterrows():
+                        act_k = row['Aktual_Kunjungan_Rajal_Total']
+                        tar_k = row['Target_Kunjungan_Rajal_Total']
+                        if act_k > 0 and tar_k > 0:
+                            ach_k = (act_k / tar_k) * 100
+                            fig_rajal.add_annotation(
+                                x=row['Cabang'], y=max(act_k, tar_k),
+                                text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
+                                font=dict(color="#2980B9", size=10, family="Arial Bold")
+                            )
+
+                    fig_rajal.update_layout(
+                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_rajal.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
+                    st.plotly_chart(fig_rajal, use_container_width=True)
+
+                # --- GRAFIK 2: BREAKDOWN RAWAT INAP (RANAP) ---
+                with col_ranap:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Rawat Inap (Ranap)</h5>", unsafe_allow_html=True)
+                    df_ranap_kunj = df_2026.groupby('Cabang')[['Aktual_Kunjungan_Ranap_Total', 'Target_Kunjungan_Ranap_Total']].sum().reset_index()
+                    
+                    fig_ranap = go.Figure()
+                    fig_ranap.add_trace(go.Bar(
+                        x=df_ranap_kunj['Cabang'], y=df_ranap_kunj['Aktual_Kunjungan_Ranap_Total'],
+                        name="Aktual Ranap 2026", marker_color="#E67E22"
+                    ))
+                    fig_ranap.add_trace(go.Bar(
+                        x=df_ranap_kunj['Cabang'], y=df_ranap_kunj['Target_Kunjungan_Ranap_Total'],
+                        name="Target Ranap 2026", marker_color="#BDC3C7"
+                    ))
+
+                    for idx, row in df_ranap_kunj.iterrows():
+                        act_k = row['Aktual_Kunjungan_Ranap_Total']
+                        tar_k = row['Target_Kunjungan_Ranap_Total']
+                        if act_k > 0 and tar_k > 0:
+                            ach_k = (act_k / tar_k) * 100
+                            fig_ranap.add_annotation(
+                                x=row['Cabang'], y=max(act_k, tar_k),
+                                text=f"Ach: {ach_k:.1f}%", showarrow=False, yshift=12,
+                                font=dict(color="#D35400", size=10, family="Arial Bold")
+                            )
+
+                    fig_ranap.update_layout(
+                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_ranap.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
+                    st.plotly_chart(fig_ranap, use_container_width=True)
+            else:
+                st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Pencapaian Kunjungan Pasien per RS.")
+
             # --- ROW 3: TREN PER RS & KONTRIBUSI (KUNCI TAHUN 2026) ---
+            st.markdown("---")
             col_a, col_b = st.columns(2)
             with col_a:
                 st.subheader("🏥 Tren Pencapaian per RS (Khusus Tahun 2026)")
@@ -488,9 +664,10 @@ try:
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
-            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Pendapatan_Potensial_Row', 'Actual EBITDA', 'EBITDA Margin %', 'Total_Kunjungan_Row']].copy()
+            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Calculated_Trajectory', 'Pendapatan_Potensial_Row', 'Actual EBITDA', 'EBITDA Margin %', 'Total_Kunjungan_Row']].copy()
             df_display.rename(columns={
                 'Calculated_Actual_Revenue': 'Actual Revenue',
+                'Calculated_Trajectory': 'Trajectory IPO',
                 'Pendapatan_Potensial_Row': 'Pendapatan Potensial',
                 'Total_Kunjungan_Row': 'Total Kunjungan'
             }, inplace=True)
@@ -511,6 +688,7 @@ try:
                 use_container_width=True, 
                 column_config={
                     "Actual Revenue": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
+                    "Trajectory IPO": st.column_config.NumberColumn("Trajectory IPO", format="%,.0f"), 
                     "Pendapatan Potensial": st.column_config.NumberColumn("Revenue Potensial", format="%,.0f"), 
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
                     "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
