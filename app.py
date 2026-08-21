@@ -119,7 +119,7 @@ def load_combined_data():
         'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)',
         'Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)',
         'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)',
-        'Trajectory', 'Trajectory Revenue', 'Target Trajectory', 'Trajectory (Total)'
+        'Trajectory Revenue', 'Trajectory EBITDA'
     ]
 
     for year, s_name in sheets.items():
@@ -128,7 +128,6 @@ def load_combined_data():
             df_tmp = pd.read_csv(url, dtype=str)
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
-            # Deteksi otomatis kolom dengan kata kunci Trajectory
             for col in df_tmp.columns:
                 if 'trajectory' in col.lower() and col not in numeric_cols:
                     numeric_cols.append(col)
@@ -280,12 +279,14 @@ try:
             else:
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
 
-            # Pencarian dan kalkulasi kolom Trajectory
-            traj_cols = [c for c in ['Trajectory', 'Trajectory Revenue', 'Target Trajectory', 'Trajectory (Total)'] if c in df_target.columns]
-            if not traj_cols:
-                traj_cols = [c for c in df_target.columns if 'trajectory' in c.lower()]
-            
-            df_target['Calculated_Trajectory'] = df_target[traj_cols].sum(axis=1) if traj_cols else 0.0
+            # Pencarian dan kalkulasi Trajectory Revenue & Trajectory EBITDA
+            traj_rev_cols = [c for c in df_target.columns if 'trajectory' in c.lower() and ('revenue' in c.lower() or 'rev' in c.lower())]
+            if not traj_rev_cols:
+                traj_rev_cols = [c for c in ['Trajectory', 'Trajectory Revenue', 'Target Trajectory', 'Trajectory (Total)'] if c in df_target.columns]
+            df_target['Calculated_Trajectory_Revenue'] = df_target[traj_rev_cols].sum(axis=1) if traj_rev_cols else 0.0
+
+            traj_ebit_cols = [c for c in df_target.columns if 'trajectory' in c.lower() and 'ebitda' in c.lower()]
+            df_target['Calculated_Trajectory_EBITDA'] = df_target[traj_ebit_cols].sum(axis=1) if traj_ebit_cols else 0.0
 
             def sum_cols_safe(df_obj, cols):
                 if isinstance(cols, list): return df_obj[cols].sum(axis=1)
@@ -335,14 +336,16 @@ try:
             if not df_2026.empty:
                 rev_act_26 = df_2026['Calculated_Actual_Revenue'].sum()
                 rev_tar_26 = df_2026['Target_Rev_Sum_Row'].sum()
-                traj_26 = df_2026['Calculated_Trajectory'].sum()
+                traj_rev_26 = df_2026['Calculated_Trajectory_Revenue'].sum()
+                traj_ebit_26 = df_2026['Calculated_Trajectory_EBITDA'].sum()
                     
                 ach_rev = (rev_act_26 / rev_tar_26 * 100) if rev_tar_26 > 0 else 0
-                ach_traj = (rev_act_26 / traj_26 * 100) if traj_26 > 0 else 0
+                ach_traj_rev = (rev_act_26 / traj_rev_26 * 100) if traj_rev_26 > 0 else 0
                 
                 ebit_act_26 = df_2026['Actual EBITDA'].sum()
                 ebit_tar_26 = df_2026['Target EBITDA'].sum()
                 ach_ebit = (ebit_act_26 / ebit_tar_26 * 100) if ebit_tar_26 > 0 else 0
+                ach_traj_ebit = (ebit_act_26 / traj_ebit_26 * 100) if traj_ebit_26 > 0 else 0
                 ebitda_margin_26 = (ebit_act_26 / rev_act_26 * 100) if rev_act_26 > 0 else 0
 
                 total_kunjungan_26 = df_2026['Total_Kunjungan_Row'].sum()
@@ -357,13 +360,15 @@ try:
                     st.write(f"### {format_rupiah_human(rev_act_26)}")
                     st.caption(f"Target: {format_rupiah_human(rev_tar_26)}")
                     st.write(f":green[{ach_rev:.1f}% vs Target]" if ach_rev >= 100 else f":orange[{ach_rev:.1f}% vs Target]")
-                    if traj_26 > 0:
-                        st.caption(f"📈 Kesiapan IPO (Trajectory): :blue[{ach_traj:.1f}%]")
+                    if traj_rev_26 > 0:
+                        st.caption(f"📈 IPO Traj: :blue[{ach_traj_rev:.1f}%] ({format_rupiah_human(traj_rev_26)})")
                 with col2:
                     st.subheader("Total EBITDA & Margin")
                     st.write(f"### {format_rupiah_human(ebit_act_26)} ({ebitda_margin_26:.1f}%)")
                     st.caption(f"Target EBITDA: {format_rupiah_human(ebit_tar_26)}")
                     st.write(f":green[{ach_ebit:.1f}% vs Target]" if ach_ebit >= 100 else f":orange[{ach_ebit:.1f}% vs Target]")
+                    if traj_ebit_26 > 0:
+                        st.caption(f"📈 IPO Traj: :blue[{ach_traj_ebit:.1f}%] ({format_rupiah_human(traj_ebit_26)})")
                 with col3:
                     st.subheader("ARPP Aktual 2026")
                     st.write(f"### Rp {arpp_aktual_26:,.0f}")
@@ -383,41 +388,42 @@ try:
                 st.markdown("---")
 
             # =====================================================================
-            # --- SEKSI BARU: ACTUAL REVENUE VS TRAJECTORY IPO (STRATEGIC VALUATION) ---
+            # --- SEKSI: ACTUAL VS TRAJECTORY IPO (REVENUE & EBITDA) ---
             # =====================================================================
-            if not df_2026.empty and df_2026['Calculated_Trajectory'].sum() > 0:
+            if not df_2026.empty and (df_2026['Calculated_Trajectory_Revenue'].sum() > 0 or df_2026['Calculated_Trajectory_EBITDA'].sum() > 0):
                 st.subheader(
-                    "🚀 Strategic IPO Readiness: Actual Revenue vs Trajectory 2026", 
-                    help="Trajectory adalah target pendapatan strategis yang dirancang untuk kesiapan menuju IPO guna mendongkrak valuasi korporasi."
+                    "🚀 Strategic IPO Readiness: Actual vs Trajectory 2026", 
+                    help="Trajectory adalah target finansial strategis (Revenue & EBITDA) yang dirancang untuk kesiapan menuju IPO guna mendongkrak valuasi korporasi."
                 )
                 
                 col_traj1, col_traj2 = st.columns(2)
                 
+                # --- GRAFIK 1: TREN BULANAN ---
                 with col_traj1:
-                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Tren Bulanan: Actual Revenue vs Trajectory IPO</h5>", unsafe_allow_html=True)
-                    df_m_traj = df_2026.groupby('Bulan')[['Calculated_Actual_Revenue', 'Calculated_Trajectory']].sum().reindex(month_order).dropna(how='all').reset_index()
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Tren Bulanan: Actual vs Trajectory IPO</h5>", unsafe_allow_html=True)
+                    df_m_traj = df_2026.groupby('Bulan')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reindex(month_order).dropna(how='all').reset_index()
                     
                     fig_traj_m = go.Figure()
+                    # Revenue Traces
                     fig_traj_m.add_trace(go.Bar(
                         x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Actual_Revenue'],
-                        name="Actual Revenue", marker_color="#2E86C1"
+                        name="Actual Revenue", marker_color="#2E86C1", offsetgroup="Rev"
                     ))
                     fig_traj_m.add_trace(go.Scatter(
-                        x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Trajectory'],
-                        name="Trajectory IPO", mode='lines+markers',
+                        x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Trajectory_Revenue'],
+                        name="Trajectory Revenue", mode='lines+markers',
                         line=dict(color="#E74C3C", width=3, dash='dash')
                     ))
-                    
-                    for idx, row in df_m_traj.iterrows():
-                        act_v = row['Calculated_Actual_Revenue']
-                        trj_v = row['Calculated_Trajectory']
-                        if act_v > 0 and trj_v > 0:
-                            pct_trj = (act_v / trj_v) * 100
-                            fig_traj_m.add_annotation(
-                                x=row['Bulan'], y=act_v,
-                                text=f"{pct_trj:.1f}%", showarrow=False, yshift=12,
-                                font=dict(color="#1E8449" if pct_trj >= 100 else "#E74C3C", size=9, family="Arial Bold")
-                            )
+                    # EBITDA Traces
+                    fig_traj_m.add_trace(go.Bar(
+                        x=df_m_traj['Bulan'], y=df_m_traj['Actual EBITDA'],
+                        name="Actual EBITDA", marker_color="#F39C12", offsetgroup="Ebit"
+                    ))
+                    fig_traj_m.add_trace(go.Scatter(
+                        x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Trajectory_EBITDA'],
+                        name="Trajectory EBITDA", mode='lines+markers',
+                        line=dict(color="#8E44AD", width=3, dash='dot')
+                    ))
 
                     fig_traj_m.update_layout(
                         yaxis_tickformat=',.0f', template="plotly_white", barmode='group',
@@ -426,34 +432,36 @@ try:
                     fig_traj_m.update_traces(hovertemplate='<b>Bulan:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
                     st.plotly_chart(fig_traj_m, use_container_width=True)
 
+                # --- GRAFIK 2: KESIAPAN IPO PER CABANG RS (MODEL DISAMAKAN DENGAN BULANAN) ---
                 with col_traj2:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Kesiapan IPO per Cabang RS (Actual vs Trajectory)</h5>", unsafe_allow_html=True)
-                    df_rs_traj = df_2026.groupby('Cabang')[['Calculated_Actual_Revenue', 'Calculated_Trajectory']].sum().reset_index()
+                    df_rs_traj = df_2026.groupby('Cabang')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reset_index()
                     
                     fig_traj_rs = go.Figure()
+                    # Revenue Traces
                     fig_traj_rs.add_trace(go.Bar(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Actual_Revenue'],
-                        name="Actual Revenue", marker_color="#2E86C1"
+                        name="Actual Revenue", marker_color="#2E86C1", offsetgroup="Rev"
                     ))
+                    fig_traj_rs.add_trace(go.Scatter(
+                        x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Trajectory_Revenue'],
+                        name="Trajectory Revenue", mode='lines+markers',
+                        line=dict(color="#E74C3C", width=3, dash='dash')
+                    ))
+                    # EBITDA Traces
                     fig_traj_rs.add_trace(go.Bar(
-                        x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Trajectory'],
-                        name="Trajectory IPO", marker_color="#E74C3C", opacity=0.7
+                        x=df_rs_traj['Cabang'], y=df_rs_traj['Actual EBITDA'],
+                        name="Actual EBITDA", marker_color="#F39C12", offsetgroup="Ebit"
                     ))
-
-                    for idx, row in df_rs_traj.iterrows():
-                        act_v = row['Calculated_Actual_Revenue']
-                        trj_v = row['Calculated_Trajectory']
-                        if act_v > 0 and trj_v > 0:
-                            pct_trj = (act_v / trj_v) * 100
-                            fig_traj_rs.add_annotation(
-                                x=row['Cabang'], y=max(act_v, trj_v),
-                                text=f"Ach: {pct_trj:.1f}%", showarrow=False, yshift=12,
-                                font=dict(color="#1E8449" if pct_trj >= 100 else "#E74C3C", size=10, family="Arial Bold")
-                            )
+                    fig_traj_rs.add_trace(go.Scatter(
+                        x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Trajectory_EBITDA'],
+                        name="Trajectory EBITDA", mode='lines+markers',
+                        line=dict(color="#8E44AD", width=3, dash='dot')
+                    ))
 
                     fig_traj_rs.update_layout(
-                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        yaxis_tickformat=',.0f', template="plotly_white", barmode='group',
+                        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     fig_traj_rs.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
                     st.plotly_chart(fig_traj_rs, use_container_width=True)
@@ -664,10 +672,11 @@ try:
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
-            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Calculated_Trajectory', 'Pendapatan_Potensial_Row', 'Actual EBITDA', 'EBITDA Margin %', 'Total_Kunjungan_Row']].copy()
+            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA', 'EBITDA Margin %', 'Pendapatan_Potensial_Row', 'Total_Kunjungan_Row']].copy()
             df_display.rename(columns={
                 'Calculated_Actual_Revenue': 'Actual Revenue',
-                'Calculated_Trajectory': 'Trajectory IPO',
+                'Calculated_Trajectory_Revenue': 'Trajectory Revenue',
+                'Calculated_Trajectory_EBITDA': 'Trajectory EBITDA',
                 'Pendapatan_Potensial_Row': 'Pendapatan Potensial',
                 'Total_Kunjungan_Row': 'Total Kunjungan'
             }, inplace=True)
@@ -688,10 +697,11 @@ try:
                 use_container_width=True, 
                 column_config={
                     "Actual Revenue": st.column_config.NumberColumn("Actual Revenue", format="%,.0f"), 
-                    "Trajectory IPO": st.column_config.NumberColumn("Trajectory IPO", format="%,.0f"), 
-                    "Pendapatan Potensial": st.column_config.NumberColumn("Revenue Potensial", format="%,.0f"), 
+                    "Trajectory Revenue": st.column_config.NumberColumn("Trajectory Revenue", format="%,.0f"), 
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
+                    "Trajectory EBITDA": st.column_config.NumberColumn("Trajectory EBITDA", format="%,.0f"),
                     "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
+                    "Pendapatan Potensial": st.column_config.NumberColumn("Revenue Potensial", format="%,.0f"), 
                     "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
                     "ARPP (Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
                 }
