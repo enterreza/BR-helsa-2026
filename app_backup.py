@@ -398,6 +398,7 @@ try:
                 
                 col_traj1, col_traj2 = st.columns(2)
                 
+                # --- GRAFIK 1: TREN BULANAN ---
                 with col_traj1:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Tren Bulanan: Actual vs Trajectory IPO</h5>", unsafe_allow_html=True)
                     df_m_traj = df_2026.groupby('Bulan')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reindex(month_order).dropna(how='all').reset_index()
@@ -431,31 +432,36 @@ try:
                     fig_traj_m.update_traces(hovertemplate='<b>Bulan:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
                     st.plotly_chart(fig_traj_m, use_container_width=True)
 
+                # --- GRAFIK 2: KESIAPAN IPO PER CABANG RS (MODEL DISAMAKAN DENGAN BULANAN) ---
                 with col_traj2:
-                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Kesiapan IPO per Cabang RS (Revenue & EBITDA vs Trajectory)</h5>", unsafe_allow_html=True)
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Kesiapan IPO per Cabang RS (Actual vs Trajectory)</h5>", unsafe_allow_html=True)
                     df_rs_traj = df_2026.groupby('Cabang')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reset_index()
                     
                     fig_traj_rs = go.Figure()
+                    # Revenue Traces
                     fig_traj_rs.add_trace(go.Bar(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Actual_Revenue'],
-                        name="Actual Rev", marker_color="#2E86C1", offsetgroup="Rev"
+                        name="Actual Revenue", marker_color="#2E86C1", offsetgroup="Rev"
                     ))
-                    fig_traj_rs.add_trace(go.Bar(
+                    fig_traj_rs.add_trace(go.Scatter(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Trajectory_Revenue'],
-                        name="Traj Rev", marker_color="#E74C3C", opacity=0.7, offsetgroup="Rev"
+                        name="Trajectory Revenue", mode='lines+markers',
+                        line=dict(color="#E74C3C", width=3, dash='dash')
                     ))
+                    # EBITDA Traces
                     fig_traj_rs.add_trace(go.Bar(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Actual EBITDA'],
                         name="Actual EBITDA", marker_color="#F39C12", offsetgroup="Ebit"
                     ))
-                    fig_traj_rs.add_trace(go.Bar(
+                    fig_traj_rs.add_trace(go.Scatter(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Trajectory_EBITDA'],
-                        name="Traj EBITDA", marker_color="#8E44AD", opacity=0.7, offsetgroup="Ebit"
+                        name="Trajectory EBITDA", mode='lines+markers',
+                        line=dict(color="#8E44AD", width=3, dash='dot')
                     ))
 
                     fig_traj_rs.update_layout(
-                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        yaxis_tickformat=',.0f', template="plotly_white", barmode='group',
+                        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     fig_traj_rs.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
                     st.plotly_chart(fig_traj_rs, use_container_width=True)
