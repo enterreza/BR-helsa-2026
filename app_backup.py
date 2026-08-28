@@ -67,6 +67,13 @@ COLOR_MAP = {
 }
 DEFAULT_COLORS = px.colors.qualitative.Plotly
 
+DAYS_IN_MONTH = {
+    'Januari': 31, 'Februari': 28, 'Maret': 31,
+    'April': 30, 'Mei': 31, 'Juni': 30,
+    'Juli': 31, 'Agustus': 31, 'September': 30,
+    'Oktober': 31, 'November': 30, 'Desember': 31
+}
+
 def format_rupiah_human(n):
     prefix = "-" if n < 0 else ""
     val = abs(n)
@@ -119,7 +126,8 @@ def load_combined_data():
         'Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)',
         'Target Kunjungan (Rajal JKN)', 'Target Kunjungan (Rajal Non JKN)',
         'Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)',
-        'Trajectory Revenue', 'Trajectory EBITDA'
+        'Trajectory Revenue', 'Trajectory EBITDA',
+        'Bed', 'Jumlah Bed', 'Kapasitas Bed', 'Bed Terpasang', 'Jumlah TT'
     ]
 
     for year, s_name in sheets.items():
@@ -129,7 +137,7 @@ def load_combined_data():
             df_tmp.columns = [str(col).strip() for col in df_tmp.columns]
             
             for col in df_tmp.columns:
-                if 'trajectory' in col.lower() and col not in numeric_cols:
+                if any(k in col.lower() for k in ['trajectory', 'bed', ' tt', 'tempat tidur']) and col not in numeric_cols:
                     numeric_cols.append(col)
 
             if 'Cabang' not in df_tmp.columns: df_tmp['Cabang'] = 'Unknown'
@@ -279,7 +287,6 @@ try:
             else:
                 df_target['Target_Rev_Sum_Row'] = df_target[target_rev_column]
 
-            # Pencarian dan kalkulasi Trajectory Revenue & Trajectory EBITDA
             traj_rev_cols = [c for c in df_target.columns if 'trajectory' in c.lower() and ('revenue' in c.lower() or 'rev' in c.lower())]
             if not traj_rev_cols:
                 traj_rev_cols = [c for c in ['Trajectory', 'Trajectory Revenue', 'Target Trajectory', 'Trajectory (Total)'] if c in df_target.columns]
@@ -305,6 +312,18 @@ try:
             df_target['Aktual_Kunjungan_Ranap_Total'] = df_target[['Aktual Kunjungan (Ranap JKN)', 'Aktual Kunjungan (Ranap Non JKN)']].sum(axis=1)
             df_target['Target_Kunjungan_Ranap_Total'] = df_target[['Target Kunjungan (Ranap JKN)', 'Target Kunjungan (Ranap Non JKN)']].sum(axis=1)
             
+            # Kolom deteksi kapasitas Bed
+            bed_col_candidates = [c for c in df_target.columns if any(k in c.lower() for k in ['bed', 'tt', 'tempat tidur'])]
+            df_target['Kapasitas_Bed_Row'] = df_target[bed_col_candidates].max(axis=1) if bed_col_candidates else 0.0
+
+            # Pendapatan Ranap Murni per Baris
+            if selected_segmen == "JKN":
+                df_target['Pendapatan_Ranap_Row'] = df_target['Actual Revenue (Ranap JKN)']
+            elif selected_segmen == "Non JKN":
+                df_target['Pendapatan_Ranap_Row'] = df_target['Actual Revenue (Ranap Non JKN)']
+            else:
+                df_target['Pendapatan_Ranap_Row'] = df_target['Actual Revenue (Ranap Total)']
+
             def process_single_row(row):
                 if row['Total_Kunjungan_Row'] == 0:
                     return 0.0
@@ -388,6 +407,118 @@ try:
                 st.markdown("---")
 
             # =====================================================================
+            # --- ROW BARU: INPATIENT PERFORMANCE (ARPOB & ARPD TAHUN 2026) ---
+            # =====================================================================
+            if not df_2026.empty:
+                st.subheader(
+                    "🛏️ Inpatient Performance Metrics: ARPOB & ARPD 2026",
+                    help="ARPOB (Average Revenue Per Occupied Bed) = Akumulasi Pendapatan Ranap / Hari Rawat (HP).\nARPD (Average Revenue Per Day) = Akumulasi Pendapatan Ranap / (Jumlah Bed Terpasang Terakhir x Jumlah Hari Periode)."
+                )
+
+                # 1. Hitung Akumulasi Hari Rawat (Hari Perawatan Ranap)
+                if selected_segmen == "JKN":
+                    hari_rawat_26 = df_2026['Aktual Kunjungan (Ranap JKN)'].sum()
+                elif selected_segmen == "Non JKN":
+                    hari_rawat_26 = df_2026['Aktual Kunjungan (Ranap Non JKN)'].sum()
+                else:
+                    hari_rawat_26 = df_2026['Aktual_Kunjungan_Ranap_Total'].sum()
+
+                # 2. Akumulasi Pendapatan Ranap
+                rev_ranap_26 = df_2026['Pendapatan_Ranap_Row'].sum()
+
+                # 3. Hitung Kapasitas Bed pada Periode Terakhir (Latest Period Bed)
+                df_sorted_m = df_2026.copy()
+                df_sorted_m['Bulan_Idx'] = df_sorted_m['Bulan'].apply(lambda x: month_order.index(x) if x in month_order else -1)
+                latest_bed_per_rs = df_sorted_m.sort_values('Bulan_Idx').groupby('Cabang')['Kapasitas_Bed_Row'].last()
+                total_bed_terakhir_26 = latest_bed_per_rs.sum()
+
+                # 4. Total Hari Kalender Periode yang Dipilih
+                total_days_period = sum([DAYS_IN_MONTH.get(m, 30) for m in selected_bulan])
+
+                # 5. Kalkulasi ARPOB & ARPD Agregat 2026
+                arpob_26 = (rev_ranap_26 / hari_rawat_26) if hari_rawat_26 > 0 else 0.0
+                total_bed_days = total_bed_terakhir_26 * total_days_period
+                arpd_26 = (rev_ranap_26 / total_bed_days) if total_bed_days > 0 else 0.0
+
+                c_arp1, c_arp2, c_arp3, c_arp4 = st.columns(4)
+                with c_arp1:
+                    st.metric(
+                        label="ARPOB (Per Occupied Bed)",
+                        value=f"Rp {arpob_26:,.0f}",
+                        help="Rata-rata pendapatan yang dihasilkan per satu tempat tidur yang terisi/hari rawat."
+                    )
+                    st.caption(f"Akumulasi Pendapatan Ranap: {format_rupiah_human(rev_ranap_26)}")
+                with c_arp2:
+                    st.metric(
+                        label="ARPD (Per Available Bed)",
+                        value=f"Rp {arpd_26:,.0f}",
+                        help="Rata-rata pendapatan harian per kapasitas total tempat tidur terpasang."
+                    )
+                    st.caption(f"Hari Rawat (HP): {hari_rawat_26:,.0f} Hari")
+                with c_arp3:
+                    st.metric(
+                        label="Bed Terpasang (Periode Terakhir)",
+                        value=f"{total_bed_terakhir_26:,.0f} Tempat Tidur",
+                        help="Jumlah kapasitas tempat tidur terpasang pada bulan/periode terakhir yang dipilih."
+                    )
+                    st.caption(f"Durasi Periode: {total_days_period} Hari Kalender")
+                with c_arp4:
+                    bor_est = (hari_rawat_26 / total_bed_days * 100) if total_bed_days > 0 else 0.0
+                    st.metric(
+                        label="Bed Occupancy Rate (BOR)",
+                        value=f"{bor_est:.1f}%",
+                        help="Tingkat pemanfaatan tempat tidur rawat inap pada periode berjalan."
+                    )
+                    st.caption("Pemanfaatan kapasitas ranap")
+
+                # Grafik ARPOB & ARPD per Cabang Rumah Sakit
+                df_arp_rs_list = []
+                for rs_name in df_2026['Cabang'].unique():
+                    df_sub_rs = df_2026[df_2026['Cabang'] == rs_name]
+                    rs_rev_ranap = df_sub_rs['Pendapatan_Ranap_Row'].sum()
+                    if selected_segmen == "JKN":
+                        rs_hp = df_sub_rs['Aktual Kunjungan (Ranap JKN)'].sum()
+                    elif selected_segmen == "Non JKN":
+                        rs_hp = df_sub_rs['Aktual Kunjungan (Ranap Non JKN)'].sum()
+                    else:
+                        rs_hp = df_sub_rs['Aktual_Kunjungan_Ranap_Total'].sum()
+                    
+                    rs_bed_latest = latest_bed_per_rs.get(rs_name, 0.0)
+                    rs_bed_days = rs_bed_latest * total_days_period
+                    
+                    rs_arpob = (rs_rev_ranap / rs_hp) if rs_hp > 0 else 0.0
+                    rs_arpd = (rs_rev_ranap / rs_bed_days) if rs_bed_days > 0 else 0.0
+                    
+                    df_arp_rs_list.append({
+                        'Cabang': rs_name,
+                        'Pendapatan Ranap': rs_rev_ranap,
+                        'Hari Rawat': rs_hp,
+                        'Bed Terakhir': rs_bed_latest,
+                        'ARPOB': rs_arpob,
+                        'ARPD': rs_arpd
+                    })
+
+                df_arp_rs = pd.DataFrame(df_arp_rs_list)
+                if not df_arp_rs.empty:
+                    fig_arp_rs = go.Figure()
+                    fig_arp_rs.add_trace(go.Bar(
+                        x=df_arp_rs['Cabang'], y=df_arp_rs['ARPOB'],
+                        name="ARPOB (Rp / Occupied Bed)", marker_color="#00CC96"
+                    ))
+                    fig_arp_rs.add_trace(go.Bar(
+                        x=df_arp_rs['Cabang'], y=df_arp_rs['ARPD'],
+                        name="ARPD (Rp / Available Bed)", marker_color="#FFA15A"
+                    ))
+                    fig_arp_rs.update_layout(
+                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_arp_rs.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
+                    st.plotly_chart(fig_arp_rs, use_container_width=True)
+
+                st.markdown("---")
+
+            # =====================================================================
             # --- SEKSI: ACTUAL VS TRAJECTORY IPO (REVENUE & EBITDA) ---
             # =====================================================================
             if not df_2026.empty and (df_2026['Calculated_Trajectory_Revenue'].sum() > 0 or df_2026['Calculated_Trajectory_EBITDA'].sum() > 0):
@@ -404,7 +535,6 @@ try:
                     df_m_traj = df_2026.groupby('Bulan')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reindex(month_order).dropna(how='all').reset_index()
                     
                     fig_traj_m = go.Figure()
-                    # Revenue Traces
                     fig_traj_m.add_trace(go.Bar(
                         x=df_m_traj['Bulan'], y=df_m_traj['Calculated_Actual_Revenue'],
                         name="Actual Revenue", marker_color="#2E86C1", offsetgroup="Rev"
@@ -414,7 +544,6 @@ try:
                         name="Trajectory Revenue", mode='lines+markers',
                         line=dict(color="#E74C3C", width=3, dash='dash')
                     ))
-                    # EBITDA Traces
                     fig_traj_m.add_trace(go.Bar(
                         x=df_m_traj['Bulan'], y=df_m_traj['Actual EBITDA'],
                         name="Actual EBITDA", marker_color="#F39C12", offsetgroup="Ebit"
@@ -432,13 +561,12 @@ try:
                     fig_traj_m.update_traces(hovertemplate='<b>Bulan:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
                     st.plotly_chart(fig_traj_m, use_container_width=True)
 
-                # --- GRAFIK 2: KESIAPAN IPO PER CABANG RS (MODEL DISAMAKAN DENGAN BULANAN) ---
+                # --- GRAFIK 2: KESIAPAN IPO PER CABANG RS ---
                 with col_traj2:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Kesiapan IPO per Cabang RS (Actual vs Trajectory)</h5>", unsafe_allow_html=True)
                     df_rs_traj = df_2026.groupby('Cabang')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reset_index()
                     
                     fig_traj_rs = go.Figure()
-                    # Revenue Traces
                     fig_traj_rs.add_trace(go.Bar(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Calculated_Actual_Revenue'],
                         name="Actual Revenue", marker_color="#2E86C1", offsetgroup="Rev"
@@ -448,7 +576,6 @@ try:
                         name="Trajectory Revenue", mode='lines+markers',
                         line=dict(color="#E74C3C", width=3, dash='dash')
                     ))
-                    # EBITDA Traces
                     fig_traj_rs.add_trace(go.Bar(
                         x=df_rs_traj['Cabang'], y=df_rs_traj['Actual EBITDA'],
                         name="Actual EBITDA", marker_color="#F39C12", offsetgroup="Ebit"
@@ -546,7 +673,6 @@ try:
             if not df_2026.empty:
                 col_rajal, col_ranap = st.columns(2)
                 
-                # --- GRAFIK 1: BREAKDOWN RAWAT JALAN (RAJAL) ---
                 with col_rajal:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Rawat Jalan (Rajal)</h5>", unsafe_allow_html=True)
                     df_rajal_kunj = df_2026.groupby('Cabang')[['Aktual_Kunjungan_Rajal_Total', 'Target_Kunjungan_Rajal_Total']].sum().reset_index()
@@ -579,7 +705,6 @@ try:
                     fig_rajal.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> %{y:,.0f} Pasien')
                     st.plotly_chart(fig_rajal, use_container_width=True)
 
-                # --- GRAFIK 2: BREAKDOWN RAWAT INAP (RANAP) ---
                 with col_ranap:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Pencapaian Kunjungan Rawat Inap (Ranap)</h5>", unsafe_allow_html=True)
                     df_ranap_kunj = df_2026.groupby('Cabang')[['Aktual_Kunjungan_Ranap_Total', 'Target_Kunjungan_Ranap_Total']].sum().reset_index()
@@ -672,16 +797,31 @@ try:
             st.markdown("---")
             st.subheader("🔍 Tabel Informasi Detail & Fitur Export")
             
-            df_display = df_filtered[['Tahun', 'Kuartal', 'Bulan', 'Cabang', 'Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA', 'EBITDA Margin %', 'Pendapatan_Potensial_Row', 'Total_Kunjungan_Row']].copy()
+            df_display = df_filtered[[
+                'Tahun', 'Kuartal', 'Bulan', 'Cabang', 
+                'Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 
+                'Actual EBITDA', 'Calculated_Trajectory_EBITDA', 'EBITDA Margin %', 
+                'Pendapatan_Ranap_Row', 'Aktual_Kunjungan_Ranap_Total', 'Kapasitas_Bed_Row',
+                'Pendapatan_Potensial_Row', 'Total_Kunjungan_Row'
+            ]].copy()
+
             df_display.rename(columns={
                 'Calculated_Actual_Revenue': 'Actual Revenue',
                 'Calculated_Trajectory_Revenue': 'Trajectory Revenue',
                 'Calculated_Trajectory_EBITDA': 'Trajectory EBITDA',
+                'Pendapatan_Ranap_Row': 'Revenue Ranap',
+                'Aktual_Kunjungan_Ranap_Total': 'Hari Rawat (HP)',
+                'Kapasitas_Bed_Row': 'Bed Terpasang',
                 'Pendapatan_Potensial_Row': 'Pendapatan Potensial',
                 'Total_Kunjungan_Row': 'Total Kunjungan'
             }, inplace=True)
             
+            # Kalkulasi ARPOB, ARPD, ARPP di Level Baris Detail
+            df_display['ARPOB (Rp)'] = (df_display['Revenue Ranap'] / df_display['Hari Rawat (HP)']).fillna(0)
+            df_display['Days_In_Month'] = df_display['Bulan'].apply(lambda b: DAYS_IN_MONTH.get(b, 30))
+            df_display['ARPD (Rp)'] = (df_display['Revenue Ranap'] / (df_display['Bed Terpasang'] * df_display['Days_In_Month'])).fillna(0)
             df_display['ARPP (Pasien)'] = (df_display['Actual Revenue'] / df_display['Total Kunjungan']).fillna(0)
+            
             df_display = df_display.sort_values(['Cabang', 'Tahun', 'Bulan'], ascending=[True, False, True])
 
             col_btn1, col_btn2, _ = st.columns([1, 1, 4])
@@ -701,6 +841,11 @@ try:
                     "Actual EBITDA": st.column_config.NumberColumn("Actual EBITDA", format="%,.0f"),
                     "Trajectory EBITDA": st.column_config.NumberColumn("Trajectory EBITDA", format="%,.0f"),
                     "EBITDA Margin %": st.column_config.NumberColumn("EBITDA Margin", format="%.2f%%"),
+                    "Revenue Ranap": st.column_config.NumberColumn("Revenue Ranap", format="%,.0f"),
+                    "Hari Rawat (HP)": st.column_config.NumberColumn("Hari Rawat (HP)", format="%,.0f"),
+                    "Bed Terpasang": st.column_config.NumberColumn("Bed Terpasang", format="%,.0f"),
+                    "ARPOB (Rp)": st.column_config.NumberColumn("ARPOB", format="Rp %,.0f"),
+                    "ARPD (Rp)": st.column_config.NumberColumn("ARPD", format="Rp %,.0f"),
                     "Pendapatan Potensial": st.column_config.NumberColumn("Revenue Potensial", format="%,.0f"), 
                     "Total Kunjungan": st.column_config.NumberColumn("Total Volume Pasien", format="%,.0f"),
                     "ARPP (Pasien)": st.column_config.NumberColumn("ARPP (Pasien)", format="Rp %,.0f")
