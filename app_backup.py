@@ -93,7 +93,6 @@ def clean_to_numeric(value):
     if val_str.startswith('(') and val_str.endswith(')'):
         val_str = '-' + val_str[1:-1]
     
-    # Menangani input persentase seperti '75.5%'
     has_pct = '%' in val_str
     cleaned = re.sub(r'[^0-9\.\-]', '', val_str)
     try:
@@ -330,17 +329,19 @@ try:
                 bor_col_candidates = [c for c in df_target.columns if 'bor' in c.lower()]
 
             if bor_col_candidates:
-                # Ambil nilai BOR mentah
                 raw_bor = df_target[bor_col_candidates[0]]
-                # Normalisasi jika format persen (> 1 misal 75 -> 0.75)
                 df_target['BOR_Decimal_Row'] = raw_bor.apply(lambda v: v / 100.0 if v > 1.0 else v)
                 df_target['BOR_Percent_Row'] = raw_bor.apply(lambda v: v if v > 1.0 else v * 100.0)
             else:
-                # Fallback jika kolom BOR belum ada di sheet
                 df_target['Days_In_Month_Calc'] = df_target['Bulan'].apply(lambda b: DAYS_IN_MONTH.get(b, 30))
                 bed_days = df_target['Kapasitas_Bed_Row'] * df_target['Days_In_Month_Calc']
                 df_target['BOR_Decimal_Row'] = (df_target['Aktual_Kunjungan_Ranap_Total'] / bed_days).fillna(0.0)
                 df_target['BOR_Percent_Row'] = df_target['BOR_Decimal_Row'] * 100.0
+
+            # Kalkulasi ARPOB per baris bulan
+            days_in_m = df_target['Bulan'].apply(lambda b: DAYS_IN_MONTH.get(b, 30))
+            pembagi_arpob_baris = df_target['BOR_Decimal_Row'] * df_target['Kapasitas_Bed_Row'] * days_in_m
+            df_target['ARPOB_Row'] = (df_target['Actual_Revenue_Ranap_Total_Row'] / pembagi_arpob_baris).fillna(0.0)
 
             def process_single_row(row):
                 if row['Total_Kunjungan_Row'] == 0:
@@ -425,7 +426,7 @@ try:
                 st.markdown("---")
 
             # =====================================================================
-            # --- ROW: INPATIENT PERFORMANCE (ARPOB DENGAN BOR DARI DATABASE) ---
+            # --- ROW: INPATIENT PERFORMANCE (ARPOB & ARPD DENGAN STACKED BAR PER BULAN) ---
             # =====================================================================
             if not df_2026.empty:
                 st.subheader(
@@ -449,7 +450,7 @@ try:
                 total_days_period = sum([DAYS_IN_MONTH.get(m, 30) for m in selected_bulan])
                 total_bed_days = total_bed_terakhir_26 * total_days_period
 
-                # 5. BOR dari Kolom Database (Weighted Average berdasarkan bed-days per baris)
+                # 5. BOR dari Kolom Database (Weighted Average)
                 df_2026['Bed_Days_Single'] = df_2026['Kapasitas_Bed_Row'] * df_2026['Bulan'].apply(lambda b: DAYS_IN_MONTH.get(b, 30))
                 sum_bed_days_all = df_2026['Bed_Days_Single'].sum()
                 if sum_bed_days_all > 0:
@@ -496,55 +497,83 @@ try:
                     )
                     st.caption(f"BOR Desimal: {bor_decimal_weighted:.4f}")
 
-                # Grafik ARPOB & ARPD per Cabang Rumah Sakit
-                df_arp_rs_list = []
-                for rs_name in df_2026['Cabang'].unique():
-                    df_sub_rs = df_2026[df_2026['Cabang'] == rs_name]
-                    rs_rev_ranap = df_sub_rs['Actual_Revenue_Ranap_Total_Row'].sum()
-                    rs_hp = df_sub_rs['Aktual_Kunjungan_Ranap_Total'].sum()
-                    
-                    rs_bed_latest = latest_bed_per_rs.get(rs_name, 0.0)
-                    rs_bed_days = rs_bed_latest * total_days_period
-                    
-                    # BOR per RS diambil dari weighted average kolom BOR di sub-dataframe cabang
-                    rs_sub_bd = df_sub_rs['Bed_Days_Single'].sum()
-                    if rs_sub_bd > 0:
-                        rs_bor_dec = (df_sub_rs['BOR_Decimal_Row'] * df_sub_rs['Bed_Days_Single']).sum() / rs_sub_bd
-                    else:
-                        rs_bor_dec = df_sub_rs['BOR_Decimal_Row'].mean()
+                # --- VISUALISASI ARPOB: BAR CHART PER RS DAN TREN BULANAN ---
+                c_arp_g1, c_arp_g2 = st.columns(2)
+                
+                with c_arp_g1:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Perbandingan ARPOB & ARPD per Cabang RS</h5>", unsafe_allow_html=True)
+                    df_arp_rs_list = []
+                    for rs_name in df_2026['Cabang'].unique():
+                        df_sub_rs = df_2026[df_2026['Cabang'] == rs_name]
+                        rs_rev_ranap = df_sub_rs['Actual_Revenue_Ranap_Total_Row'].sum()
+                        rs_hp = df_sub_rs['Aktual_Kunjungan_Ranap_Total'].sum()
+                        rs_bed_latest = latest_bed_per_rs.get(rs_name, 0.0)
+                        rs_bed_days = rs_bed_latest * total_days_period
+                        
+                        rs_sub_bd = df_sub_rs['Bed_Days_Single'].sum()
+                        if rs_sub_bd > 0:
+                            rs_bor_dec = (df_sub_rs['BOR_Decimal_Row'] * df_sub_rs['Bed_Days_Single']).sum() / rs_sub_bd
+                        else:
+                            rs_bor_dec = df_sub_rs['BOR_Decimal_Row'].mean()
 
-                    # Rumus ARPOB per RS: Actual Revenue (Ranap Total) / (BOR * Jumlah Bed * periode)
-                    rs_pembagi_arpob = rs_bor_dec * rs_bed_latest * total_days_period
-                    rs_arpob = (rs_rev_ranap / rs_pembagi_arpob) if rs_pembagi_arpob > 0 else 0.0
-                    rs_arpd = (rs_rev_ranap / rs_bed_days) if rs_bed_days > 0 else 0.0
-                    
-                    df_arp_rs_list.append({
-                        'Cabang': rs_name,
-                        'Actual Revenue (Ranap Total)': rs_rev_ranap,
-                        'Hari Rawat': rs_hp,
-                        'Bed Terakhir': rs_bed_latest,
-                        'BOR (%)': rs_bor_dec * 100.0,
-                        'ARPOB': rs_arpob,
-                        'ARPD': rs_arpd
-                    })
+                        rs_pembagi_arpob = rs_bor_dec * rs_bed_latest * total_days_period
+                        rs_arpob = (rs_rev_ranap / rs_pembagi_arpob) if rs_pembagi_arpob > 0 else 0.0
+                        rs_arpd = (rs_rev_ranap / rs_bed_days) if rs_bed_days > 0 else 0.0
+                        
+                        df_arp_rs_list.append({
+                            'Cabang': rs_name,
+                            'Actual Revenue (Ranap Total)': rs_rev_ranap,
+                            'Hari Rawat': rs_hp,
+                            'Bed Terakhir': rs_bed_latest,
+                            'BOR (%)': rs_bor_dec * 100.0,
+                            'ARPOB': rs_arpob,
+                            'ARPD': rs_arpd
+                        })
 
-                df_arp_rs = pd.DataFrame(df_arp_rs_list)
-                if not df_arp_rs.empty:
-                    fig_arp_rs = go.Figure()
-                    fig_arp_rs.add_trace(go.Bar(
-                        x=df_arp_rs['Cabang'], y=df_arp_rs['ARPOB'],
-                        name="ARPOB (Rp / Occupied Bed)", marker_color="#00CC96"
+                    df_arp_rs = pd.DataFrame(df_arp_rs_list)
+                    if not df_arp_rs.empty:
+                        fig_arp_rs = go.Figure()
+                        fig_arp_rs.add_trace(go.Bar(
+                            x=df_arp_rs['Cabang'], y=df_arp_rs['ARPOB'],
+                            name="ARPOB (Rp / Occupied Bed)", marker_color="#00CC96"
+                        ))
+                        fig_arp_rs.add_trace(go.Bar(
+                            x=df_arp_rs['Cabang'], y=df_arp_rs['ARPD'],
+                            name="ARPD (Rp / Available Bed)", marker_color="#FFA15A"
+                        ))
+                        fig_arp_rs.update_layout(
+                            barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                            hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        )
+                        fig_arp_rs.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
+                        st.plotly_chart(fig_arp_rs, use_container_width=True)
+
+                with c_arp_g2:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>📈 Tren Pertumbuhan ARPOB Bulanan per Cabang (2026)</h5>", unsafe_allow_html=True)
+                    # Tabel pivot pertumbuhan ARPOB bulanan
+                    df_arpob_m = df_2026.groupby(['Bulan', 'Cabang'])['ARPOB_Row'].mean().reset_index()
+                    df_arpob_m['Bulan'] = pd.Categorical(df_arpob_m['Bulan'], categories=month_order, ordered=True)
+                    df_arpob_m = df_arpob_m.sort_values(['Bulan', 'Cabang'])
+                    
+                    fig_arp_trend = px.bar(
+                        df_arpob_m, x='Bulan', y='ARPOB_Row', color='Cabang',
+                        barmode='stack', color_discrete_map=COLOR_MAP
+                    )
+                    
+                    # Tambahkan Garis Tren Rata-Rata ARPOB Keseluruhan
+                    df_arpob_avg = df_2026.groupby('Bulan')['ARPOB_Row'].mean().reindex(month_order).dropna().reset_index()
+                    fig_arp_trend.add_trace(go.Scatter(
+                        x=df_arpob_avg['Bulan'], y=df_arpob_avg['ARPOB_Row'],
+                        name="Rata-rata ARPOB", mode='lines+markers',
+                        line=dict(color="#2C3E50", width=3, dash='dash')
                     ))
-                    fig_arp_rs.add_trace(go.Bar(
-                        x=df_arp_rs['Cabang'], y=df_arp_rs['ARPD'],
-                        name="ARPD (Rp / Available Bed)", marker_color="#FFA15A"
-                    ))
-                    fig_arp_rs.update_layout(
-                        barmode='group', template='plotly_white', yaxis_tickformat=',.0f',
+                    
+                    fig_arp_trend.update_layout(
+                        template='plotly_white', yaxis_tickformat=',.0f',
                         hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
-                    fig_arp_rs.update_traces(hovertemplate='<b>RS:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
-                    st.plotly_chart(fig_arp_rs, use_container_width=True)
+                    fig_arp_trend.update_traces(hovertemplate='<b>%{x}</b><br>%{fullData.name}: Rp %{y:,.0f}')
+                    st.plotly_chart(fig_arp_trend, use_container_width=True)
 
                 st.markdown("---")
 
@@ -559,7 +588,6 @@ try:
                 
                 col_traj1, col_traj2 = st.columns(2)
                 
-                # --- GRAFIK 1: TREN BULANAN ---
                 with col_traj1:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Tren Bulanan: Actual vs Trajectory IPO</h5>", unsafe_allow_html=True)
                     df_m_traj = df_2026.groupby('Bulan')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reindex(month_order).dropna(how='all').reset_index()
@@ -591,7 +619,6 @@ try:
                     fig_traj_m.update_traces(hovertemplate='<b>Bulan:</b> %{x}<br><b>%{trace.name}:</b> Rp %{y:,.0f}')
                     st.plotly_chart(fig_traj_m, use_container_width=True)
 
-                # --- GRAFIK 2: KESIAPAN IPO PER CABANG RS ---
                 with col_traj2:
                     st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Kesiapan IPO per Cabang RS (Actual vs Trajectory)</h5>", unsafe_allow_html=True)
                     df_rs_traj = df_2026.groupby('Cabang')[['Calculated_Actual_Revenue', 'Calculated_Trajectory_Revenue', 'Actual EBITDA', 'Calculated_Trajectory_EBITDA']].sum().reset_index()
@@ -798,10 +825,13 @@ try:
                 else:
                     st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk melihat Komposisi Pendapatan per RS.")
 
-            # --- ROW 4: PIE CHARTS KOMPOSISI JKN VS NON JKN (TAHUN 2026) ---
+            # =====================================================================
+            # --- ROW 4: KOMPOSISI PASIEN JKN VS NON JKN (PIE + STACKED BAR BULANAN) ---
+            # =====================================================================
             st.markdown("---")
             st.subheader(f"📊 Analisis Komposisi Pasien JKN vs Non JKN (Khusus Tahun 2026)")
             if not df_2026.empty:
+                # 1. Total Pie Charts
                 col_pie1, col_pie2 = st.columns(2)
                 tot_jkn_rev = df_2026['Calculated_JKN_Revenue'].sum()
                 tot_non_jkn_rev = df_2026['Calculated_Non_JKN_Revenue'].sum()
@@ -810,16 +840,61 @@ try:
                 tot_non_jkn_kunj = df_2026[non_jkn_kunj_cols].sum().sum()
                 
                 with col_pie1:
-                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Berdasarkan Nilai Finansial (Revenue)</h5>", unsafe_allow_html=True)
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Akumulasi Berdasarkan Nilai Finansial (Revenue)</h5>", unsafe_allow_html=True)
                     fig_pie_rev = px.pie(names=['Revenue JKN', 'Revenue Non JKN'], values=[tot_jkn_rev, tot_non_jkn_rev], hole=0.4, color_discrete_sequence=["#2ecc71", "#e74c3c"])
                     fig_pie_rev.update_traces(textinfo='percent+label', hovertemplate='<b>Kategori:</b> %{label}<br><b>Revenue:</b> Rp %{value:,.0f}<br><b>Persentase:</b> %{percent}')
                     st.plotly_chart(fig_pie_rev, use_container_width=True)
                     
                 with col_pie2:
-                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Berdasarkan Volume Kunjungan Pasien</h5>", unsafe_allow_html=True)
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>Porsi Akumulasi Berdasarkan Volume Kunjungan Pasien</h5>", unsafe_allow_html=True)
                     fig_pie_kunj = px.pie(names=['Kunjungan JKN', 'Kunjungan Non JKN'], values=[tot_jkn_kunj, tot_non_jkn_kunj], hole=0.4, color_discrete_sequence=["#3498db", "#f39c12"])
                     fig_pie_kunj.update_traces(textinfo='percent+label', hovertemplate='<b>Kategori:</b> %{label}<br><b>Volume:</b> %{value:,.0f} Kunjungan<br><b>Persentase:</b> %{percent}')
                     st.plotly_chart(fig_pie_kunj, use_container_width=True)
+
+                # 2. STACKED BAR CHARTS: PERTUMBUHAN BULANAN KOMPOSISI PASIEN JKN VS NON-JKN
+                col_sb1, col_sb2 = st.columns(2)
+                
+                # Agregasi bulanan JKN vs Non-JKN
+                df_m_comp = df_2026.groupby('Bulan')[['Calculated_JKN_Revenue', 'Calculated_Non_JKN_Revenue']].sum().reindex(month_order).dropna(how='all').reset_index()
+                df_m_comp['Kunj_JKN'] = df_2026.groupby('Bulan')[jkn_kunj_cols].sum().sum(axis=1).reindex(month_order).dropna().values
+                df_m_comp['Kunj_Non_JKN'] = df_2026.groupby('Bulan')[non_jkn_kunj_cols].sum().sum(axis=1).reindex(month_order).dropna().values
+
+                with col_sb1:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>📈 Pertumbuhan Bulanan Revenue (Stacked: JKN vs Non JKN)</h5>", unsafe_allow_html=True)
+                    fig_sb_rev = go.Figure()
+                    fig_sb_rev.add_trace(go.Bar(
+                        x=df_m_comp['Bulan'], y=df_m_comp['Calculated_JKN_Revenue'],
+                        name="Revenue JKN", marker_color="#2ECC71"
+                    ))
+                    fig_sb_rev.add_trace(go.Bar(
+                        x=df_m_comp['Bulan'], y=df_m_comp['Calculated_Non_JKN_Revenue'],
+                        name="Revenue Non JKN", marker_color="#E74C3C"
+                    ))
+                    fig_sb_rev.update_layout(
+                        barmode='stack', template='plotly_white', yaxis_tickformat=',.0f',
+                        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_sb_rev.update_traces(hovertemplate='<b>%{x}</b><br>%{fullData.name}: Rp %{y:,.0f}')
+                    st.plotly_chart(fig_sb_rev, use_container_width=True)
+
+                with col_sb2:
+                    st.markdown("<h5 style='text-align: center; color:#2c3e50;'>📈 Pertumbuhan Bulanan Kunjungan Pasien (Stacked: JKN vs Non JKN)</h5>", unsafe_allow_html=True)
+                    fig_sb_kunj = go.Figure()
+                    fig_sb_kunj.add_trace(go.Bar(
+                        x=df_m_comp['Bulan'], y=df_m_comp['Kunj_JKN'],
+                        name="Kunjungan JKN", marker_color="#3498DB"
+                    ))
+                    fig_sb_kunj.add_trace(go.Bar(
+                        x=df_m_comp['Bulan'], y=df_m_comp['Kunj_Non_JKN'],
+                        name="Kunjungan Non JKN", marker_color="#F39C12"
+                    ))
+                    fig_sb_kunj.update_layout(
+                        barmode='stack', template='plotly_white', yaxis_tickformat=',.0f',
+                        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    fig_sb_kunj.update_traces(hovertemplate='<b>%{x}</b><br>%{fullData.name}: %{y:,.0f} Pasien')
+                    st.plotly_chart(fig_sb_kunj, use_container_width=True)
+
             else:
                 st.info("ℹ️ Silakan pastikan filter '2026' tercentang untuk memuat Diagram Komposisi JKN vs Non JKN.")
 
@@ -847,11 +922,9 @@ try:
                 'Total_Kunjungan_Row': 'Total Kunjungan'
             }, inplace=True)
             
-            # Kalkulasi ARPOB Baru, ARPD, ARPP di Level Baris Detail
+            # Kalkulasi ARPOB, ARPD, ARPP di Level Baris Detail
             df_display['Days_In_Month'] = df_display['Bulan'].apply(lambda b: DAYS_IN_MONTH.get(b, 30))
             df_display['Bed_Days_Row'] = df_display['Bed Terpasang'] * df_display['Days_In_Month']
-            
-            # Nilai BOR desimal baris dari database
             df_display['BOR_Dec_Row'] = df_display['BOR (%)'] / 100.0
             
             # Parameter ARPOB = Actual Revenue (Ranap Total) / (BOR * Jumlah Bed * periode)
