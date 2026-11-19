@@ -53,7 +53,7 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
     st.session_state["logged_in"] = False
     st.rerun()
 
-LOGO_FILE = "HELSA Rumah sakit.png"
+LOGO_FILE = "Logo_Helsa Hospital_Horizontal.png"
 if os.path.exists(LOGO_FILE):
     st.image(LOGO_FILE, use_container_width=False, width=250)
 
