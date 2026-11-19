@@ -27,7 +27,7 @@ if not st.session_state["logged_in"]:
     with col2:
         st.write("")
         st.write("")
-        LOGO_FILE = "HELSA Rumah sakit.png"
+        LOGO_FILE = "Logo_Helsa Medika Dharma_Horisontal.png"
         if os.path.exists(LOGO_FILE):
             st.image(LOGO_FILE, use_container_width=False, width=250)
         
